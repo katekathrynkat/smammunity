@@ -1,0 +1,172 @@
+---
+title: "Shannon_diversity"
+author: "Kate"
+date: "November 7, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages and data, include=FALSE}
+
+# Install necessary packages
+library(tidyverse)
+library(vegan)
+
+# Load necessary data
+smamms <- read_csv('smamms.csv')
+meta <- read_csv('sites.csv')
+
+```
+
+
+```{r simplified data frame}
+
+# Create combined and simplified data frame with only unique animals
+smammeta <- full_join(smamms, meta, by = c("site" = "site.code")) %>% 
+  filter(species != 'MISS' & species != 'SPRU') %>% # remove SPRU and MISS
+  group_by(indID) %>% 
+  filter(row_number()==1) %>% # filter by unique animals
+  ungroup() %>% 
+  select(site, severity, species) %>% 
+  mutate(
+    severity = 
+      case_when(
+        severity == 'Green' ~ 'low',
+        severity == 'Mixed' ~ 'med',
+        severity == 'High' ~ 'high'
+      )
+  ) %>% 
+  mutate(severity = factor(severity, levels = c('low', 'med', 'high')))
+
+```
+
+
+```{r species matrix, include=FALSE}
+
+# Create a species matrix
+matrix_temp <- smammeta %>% 
+  group_by(site, species) %>% 
+  tally() %>%  # count individuals per species per site
+  spread(species, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+
+matrix <- matrix_temp %>% 
+  select(-site) # remove site column for input into vegan
+
+sites <- matrix_temp$site # vector of just sites
+
+```
+
+
+```{r calculate H, echo=FALSE}
+
+# Calculate Shannon-Weaver diversity index (H) for each site
+H <- diversity(matrix)
+
+# Make a dataframe with site, severity, and H
+diversity <- data_frame(sites, H) %>% 
+  full_join(., smammeta, by = c('sites' = 'site')) %>% 
+  select(sites, severity, H) %>% 
+  rename(site = sites) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1)
+
+```
+
+
+```{r data distribution}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+H_hist <- ggplot(diversity, aes(x = H)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+H_hist
+
+# Make qqplots for each treatment
+H_qq <- ggplot(diversity, aes(sample = H)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+H_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r data variance}
+
+# Explore variance
+variances <- diversity %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(H)
+  )
+
+variances
+
+# The variances aren't that different for each severity
+
+```
+
+
+```{r ANOVA and post-hoc tests}
+
+# Test for significant differences in means
+
+# ANOVA
+H_aov <- aov(H ~ severity, data = diversity)
+
+summary(H_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+H_ph <- TukeyHSD(H_aov)
+H_ph
+
+# p=0.005 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r boxplot}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Mixed Severity', 'High Severity') 
+
+H_boxplot <- ggplot(diversity, aes(x = severity, y = H)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Shannon Diversity (H)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+H_boxplot
+
+# Calculate mean diversity for each treatment
+
+H_summary <- diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    H_mean = mean(H),
+    H_sd = sd(H)
+  )
+
+```
