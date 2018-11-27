@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r packages and data, include=FALSE}
 
-# Install necessary packages
+# Load necessary packages
 library(tidyverse)
 library(vegan)
 

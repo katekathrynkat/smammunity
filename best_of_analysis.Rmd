@@ -1,0 +1,751 @@
+---
+title: "Best of: Smammunity Analysis"
+author: "Kate"
+date: "November 10, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages & data, include=FALSE}
+
+# Load necessary packages
+library(tidyverse)
+library(vegan)
+library(dunn.test)
+library(secr)
+
+# Load necessary data
+smamms <- read_csv('smamms.csv')
+meta <- read_csv('sites.csv')
+trap <- read_csv("trapmatrix.csv")
+
+```
+
+
+```{r combined data frame, include=FALSE}
+
+# Create a combined and simplified data frame with only unique animals
+smammeta <- full_join(smamms, meta, by = c("site" = "site.code")) %>% 
+  filter(species != 'MISS' & species != 'SPRU') %>% # remove SPRU and MISS
+  group_by(indID) %>% 
+  filter(row_number()==1) %>% # filter by unique animals
+  ungroup() %>% 
+  select(site, severity, species) %>% 
+  mutate(
+    severity = 
+      case_when(
+        severity == 'Green' ~ 'low',
+        severity == 'Mixed' ~ 'med',
+        severity == 'High' ~ 'high'
+      )
+  ) %>% 
+  mutate(severity = factor(severity, levels = c('low', 'med', 'high')))
+
+```
+
+<br>
+
+####1. Shannon diversity
+
+```{r diversity: species matrix, include=FALSE}
+
+# Create a species matrix
+matrix_temp <- smammeta %>% 
+  group_by(site, species) %>% 
+  tally() %>%  # count individuals per species per site
+  spread(species, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+
+matrix <- matrix_temp %>% 
+  select(-site) # remove site column for input into vegan
+
+sites <- matrix_temp$site # vector of just sites
+
+```
+
+
+```{r diversity: calculate H, include=FALSE}
+
+# Calculate Shannon-Weaver diversity index (H) for each site
+H <- diversity(matrix)
+
+# Make a dataframe with site, severity, and H
+diversity <- data_frame(sites, H) %>% 
+  full_join(., smammeta, by = c('sites' = 'site')) %>% 
+  select(sites, severity, H) %>% 
+  rename(site = sites) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1)
+
+```
+
+
+```{r diversity: boxplot, echo=FALSE,fig.height=2, fig.width=4, fig.align='center'}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Mixed Severity', 'High Severity') 
+
+H_boxplot <- ggplot(diversity, aes(x = severity, y = H)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Shannon Diversity (H)',
+       title = 'Diversity vs. fire severity') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+H_boxplot
+
+# Calculate mean diversity for each treatment
+
+H_summary <- diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    H_mean = mean(H),
+    H_sd = sd(H)
+  )
+
+```
+
+
+```{r diversity: data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+H_hist <- ggplot(diversity, aes(x = H)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+H_hist
+
+# Make qqplots for each treatment
+H_qq <- ggplot(diversity, aes(sample = H)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+H_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r diversity: data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- diversity %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(H)
+  )
+
+variances
+
+# The variances aren't that different for each severity
+
+```
+
+
+```{r diversity: parametric tests, include=FALSE}
+
+# Test for significant differences in means
+
+# ANOVA
+H_aov <- aov(H ~ severity, data = diversity)
+
+summary(H_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+H_ph <- TukeyHSD(H_aov)
+H_ph
+
+# p=0.005 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r diversity: nonparametric tests, include=FALSE}
+
+# Post-hoc pairwise testing
+
+# Kruskal Wallis
+H_kw <- kruskal.test(H ~ severity, data = diversity)
+
+H_kw
+
+# p<0.05, so there is at least one sig difference in means
+
+# Post-hoc pairwise testing
+
+# Dunn's test
+dunn.test(diversity$H, diversity$severity,
+          method = 'bonferroni') # Bonferroni correction
+
+```
+
+**Shannon diversity (H) decreased across the fire severity gradient.** Diversity differed significantly between the three fire severity treatments. Post-hoc analysis shows a significant difference between low and high severity means, but not between med vs. low or med vs. high severities.
+
+- the data distribution is borderline funky and n is low (but at least the variance is comparable), so unsure about whether parametric tests are appropriate
+- however, the results are the same using parametric tests (one-way ANOVA and Tukey's HSD) and non-parametric tests (Kruskal-Wallis and Dunn's test)
+
+<br>
+
+####2. Species richness
+
+```{r richness: more species matrices, include=FALSE}
+
+# Create separate species matrices for each treatment
+
+matrix_low <- matrix[1:9,] # species matrix for low severity
+matrix_med <- matrix[19:27,] # species matrix for med severity
+matrix_high <- matrix[10:18,] # species matrix for high severity
+
+# Create species matrix by treatment
+
+matrix_temp <- smammeta %>% 
+  group_by(severity, species) %>% 
+  tally() %>%  # count individuals per species per treatment
+  spread(species, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+  
+matrix_sev <- matrix_temp %>% 
+  select(-severity) # remove treatment column for input into vegan
+
+treats <- matrix_temp$severity # vector of just treatments
+
+row.names(matrix_sev) <- treats # add treatments to matrix as row names
+
+```
+
+
+```{r richness: by treatment rarefaction curves, echo=FALSE, fig.height=3, fig.width=4, fig.align='center'}
+
+# Plot rarefaction curves for each treatment
+
+raremax2 <- min(rowSums(matrix_sev)) # minimum sample count = 5: rarefy using this value
+
+colors <- c('darkgreen', 'orange', 'red')
+
+par(mar = c(4,4,1,1)) # change margins
+curves_sev <- rarecurve(matrix_sev,
+                        sample = raremax2,
+                        col = colors,
+                        lwd = 2,
+                        label = FALSE,
+                        main = 'Rarefaction curves (pooled sites) for each fire severity',
+                        cex.main = 0.8)
+
+```
+
+
+```{r richness: by treatment rarefaction, include=FALSE}
+
+# Calculate richness for each treatment using rarefaction
+
+rare <- rarefy(matrix_sev, sample = raremax2)
+
+# Make a dataframe with severity and H
+severity <- c('low', 'med', 'high')
+
+richness_sev <- data_frame(severity, rare)
+
+```
+
+
+```{r richness: by site rarefaction, include=FALSE}
+
+# Calculate richness for each site using rarefaction
+raremax <- min(rowSums(matrix)) # minimum sample count = 5: rarefy using this value
+
+rare <- rarefy(matrix, sample = raremax)
+
+# Make a dataframe with site, severity, and H
+richness <- data_frame(sites, rare) %>% 
+  full_join(., smammeta, by = c('sites' = 'site')) %>% 
+  select(sites, severity, rare) %>% 
+  rename(site = sites) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1)
+
+```
+
+
+```{r richness: by site data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+rare_hist <- ggplot(richness, aes(x = rare)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+rare_hist
+
+# Make qqplots for each treatment
+rare_qq <- ggplot(richness, aes(sample = rare)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+rare_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r richness: by site data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- richness %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(rare)
+  )
+
+variances
+
+# The variances aren't that different for each severity
+
+```
+
+
+```{r richness: by site parametric tests, include=FALSE}
+
+# Test for significant differences in means
+
+# ANOVA
+rare_aov <- aov(rare ~ severity, data = richness)
+
+summary(rare_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+rare_ph <- TukeyHSD(rare_aov)
+rare_ph
+
+# p=0.003 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r richness: by site nonparametric tests, include=FALSE, eval=FALSE}
+
+# Post-hoc pairwise testing
+
+# Kruskal Wallis
+rare_kw <- kruskal.test(rare ~ severity, data = richness)
+
+rare_kw
+
+# p<0.05, so there is at least one sig difference in means
+
+# Post-hoc pairwise testing
+
+# Dunn's test
+dunn.test(richness$rare, richness$severity,
+          method = 'bonferroni') # Bonferroni correction
+
+```
+
+
+**Species richness decreased across the fire severity gradient.** Pooled rarefaction values, low to high severity are 8.9, 8.0, and 6.0 species.
+
+I also tried rarefying per site, but the richness results were all between 1 and 3 species per site. Assuming this is bunk since the numbers are just too low. However, there were significant differences between the three severities, even though the numbers seemed funky.
+
+<br>
+
+####3. Overall small mammal abundance
+
+```{r overall abundance: calculation, include=FALSE}
+
+# Calculate total abundance for all species at each site
+
+abundance <- smammeta %>% 
+  group_by(site) %>% 
+  tally() %>% # count individuals per site
+  full_join(., smammeta, by = 'site') %>% 
+  select(site, severity, n) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1) %>%
+  ungroup()
+
+```
+
+
+```{r overall abundance: boxplot, echo=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Mixed Severity', 'High Severity') 
+
+n_boxplot <- ggplot(abundance, aes(x = severity, y = n)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Abundance (number of indv)',
+       title = 'Overall abundance vs. fire severity') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+n_boxplot
+
+# Calculate mean diversity for each treatment
+
+n_summary <- abundance %>% 
+  group_by(severity) %>% 
+  summarise(
+    n_mean = mean(n),
+    n_sd = sd(n)
+  )
+
+```
+
+
+```{r overall abundance: data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+n_hist <- ggplot(abundance, aes(x = n)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+n_hist
+
+# Make qqplots for each treatment
+n_qq <- ggplot(abundance, aes(sample = n)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+n_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look normal
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r overall abundance: data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- abundance %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(n)
+  )
+
+variances
+
+# Variances are WAY different (>4x)
+# Cannot satisfy assumptions of ANOVA
+
+```
+
+
+```{r overall abundance: nonparametric tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# Kruskal Wallis
+n_kw <- kruskal.test(n ~ severity, data = abundance)
+
+n_kw
+
+# p>0.05, so there are no sig differences in means
+
+```
+
+
+**The overall abundance of small mammals did not change with fire severity.** There was no significant difference in overall abundance in response to fire severity.
+
+- results from nonparametric test (Kruskal-Wallis) because variance was all over the place
+
+<br>
+
+####4. PEMA abundance
+
+```{r PEMA abundance: calculation, include = FALSE}
+
+# Calculate total abundance for PEMA at each site
+
+abundance_pema <- smammeta %>% 
+  filter(species == 'PEMA') %>% 
+  group_by(site) %>% 
+  tally() %>% # count individuals per site
+  full_join(., smammeta, by = 'site') %>% 
+  select(site, severity, n) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1) %>%
+  ungroup()
+
+```
+
+
+```{r PEMA abundance: boxplot, echo=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Mixed Severity', 'High Severity') 
+
+n_pema_boxplot <- ggplot(abundance_pema, aes(x = severity, y = n)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Abundance (number of indv)',
+       title = 'PEMA abundance vs. fire severity') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+n_pema_boxplot
+
+# Calculate mean diversity for each treatment
+
+n_pema_summary <- abundance_pema %>% 
+  group_by(severity) %>% 
+  summarise(
+    n_pema_mean = mean(n),
+    n_pema_sd = sd(n)
+  )
+
+```
+
+
+```{r PEMA abundance: data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+n_pema_hist <- ggplot(abundance_pema, aes(x = n)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+n_pema_hist
+
+# Make qqplots for each treatment
+n_pema_qq <- ggplot(abundance_pema, aes(sample = n)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+n_pema_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look normal except high severity has a crazy outlier
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r PEMA abundance: data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- abundance_pema %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(n)
+  )
+
+variances
+
+# Variances are WAY different (>4x)
+# Cannot satisfy assumptions of ANOVA
+
+```
+
+
+```{r PEMA abundance: nonparametric tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# Kruskal Wallis
+n_pema_kw <- kruskal.test(n ~ severity, data = abundance_pema)
+
+n_pema_kw
+
+# p<0.05, so there is at least one sig difference in means
+
+# Post-hoc pairwise testing
+
+# Dunn's test
+dunn.test(abundance_pema$n, abundance_pema$severity,
+          method = 'bonferroni') # Bonferroni correction
+
+# High severity is sig different from both unburned and mixed severity
+# Unburned and mixed severity are not different from each other
+
+```
+
+**PEMA abundance increased with fire severity.** Abundance in high severity was significantly different from both low and medium severities.
+
+- results from nonparametric test (Kruskal-Wallis and Dunn's test) because variance was all over the place
+
+<br>
+
+####5. PEMA proportion
+
+```{r PEMA proportion: calculation, include=FALSE}
+
+n_prop <- full_join(abundance, abundance_pema, by = 'site') %>% 
+  select(site, severity.x, n.x, n.y) %>% 
+  rename(severity = severity.x,
+         n = n.x,
+         n_pema = n.y) %>% 
+  mutate(prop = n_pema/n) %>% 
+  arrange(prop)
+
+```
+
+
+```{r PEMA prop: boxplot, echo=FALSE, fig.height=2, fig.width=4, fig.align='center'}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Mixed Severity', 'High Severity') 
+
+n_prop_boxplot <- ggplot(n_prop, aes(x = severity, y = prop)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Proportion of P. maniculatus',
+       title = 'Proportion of PEMA vs. fire severity') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+n_prop_boxplot
+
+# Calculate means for each treatment
+
+n_prop_summary <- n_prop %>% 
+  group_by(severity) %>% 
+  summarise(
+    n_prop_mean = mean(prop),
+    n_prop_sd = sd(prop)
+  )
+
+```
+
+
+```{r PEMA prop: data distribution, include=FALSE, eval=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+n_prop_hist <- ggplot(n_prop, aes(x = prop)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+n_prop_hist
+
+# Make qqplots for each treatment
+n_prop_qq <- ggplot(n_prop, aes(sample = prop)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+n_prop_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look sorta funky but maybe okay?
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r PEMA prop: data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- n_prop %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(prop)
+  )
+
+variances
+
+# Variances are similar
+
+```
+
+
+```{r PEMA prop: parametric tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# ANOVA
+prop_aov <- aov(prop ~ severity, data = n_prop)
+
+summary(prop_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+prop_ph <- TukeyHSD(prop_aov)
+prop_ph
+
+# p=0.006 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r PEMA prop: nonparametric tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# Kruskal Wallis
+n_prop_kw <- kruskal.test(prop ~ severity, data = n_prop)
+
+n_prop_kw
+
+# p<0.05, so there is at least one sig difference in means
+
+# Post-hoc pairwise testing
+
+# Dunn's test
+dunn.test(n_prop$prop, n_prop$severity,
+          method = 'bonferroni') # Bonferroni correction
+
+# High severity is sig different from both unburned and mixed severity
+# Unburned and mixed severity are not different from each other
+
+```
+
+**The proportion of P. maniculatus increased with fire severity.** The mean proportion increased from 66.6% in unburned sites to 89.5% in high severity sites, with a significant difference between unburned and high severity, but not between low and med or med and high.
+
+- Same results with parametric tests (ANOVA, Tukey's HSD) and nonparametric tests (Kruskal-Wallis, Dunn's test)
+
+<br>
+
+####6. PEMA density (secr)
+
+<br>
+
+####Concerns and future directions...
+
+- Need to account for variable trapping effort
+- Right now, diversity/richness/abundance estimates are based on numbers of unique individuals per species. Should I be worried about somehow accounting for animals that were caught multiple times versus animals that were only caught once? (*NOT a problem with density estimates via secr*)

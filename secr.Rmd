@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r packages and data, include=FALSE}
 
-# Install necessary packages
+# Load necessary packages
 library(tidyverse)
 library(secr)
 library(dunn.test)
@@ -30,36 +30,78 @@ meta <- read_csv('sites.csv')
 ```{r create files}
 
 # Create trap file
-trap1 <- trap %>% 
-  rename(detector = trapID)
-trapf<-read.traps(data = trap1, detector = "multi", trapID = 'detector')
 
-write_csv(trap1,'smamms_trap.csv', col_names = FALSE) # read.capthist does NOT work with column names (headers
+sprung <- smamms %>% 
+  filter(species == 'SPRU' | species == 'MISS') %>%
+  select(site, day, trap, species) %>% 
+  mutate(usage = case_when(
+    species == 'SPRU' ~ '0.5',
+    species == 'MISS' ~ '0'
+  ))
+
+det_effort <- function(x, session) {
+  x %>% 
+    filter(day == session) %>% 
+    full_join(trap, by = c('trap' = 'trapID')) %>% 
+    arrange(trap) %>% 
+    mutate(effort = case_when(
+      !is.na(usage) ~ usage,
+      is.na(usage) ~ '1'
+    )) %>% 
+    select(trap, x, y, effort)
+} # function for creating vector of effort for each session
+
+sprungify <- function(x, site_code) {
+  sprung_site <- x %>% filter(site == site_code)
+  
+  sprung1 <- det_effort(sprung_site, 1)
+  sprung2 <- det_effort(sprung_site, 2)
+  sprung3 <- det_effort(sprung_site, 3)
+  
+  sprung_all <- full_join(sprung1, sprung2,
+                          by = c('trap', 'x', 'y')) %>% 
+    full_join(sprung3, by = c('trap', 'x', 'y')) %>% 
+    mutate(effort = paste(effort.x, effort.y, effort,
+                          sep = ' ')) %>% 
+    select(trap, x, y, effort)
+  
+  write_csv(sprung_all, 'smamms_trap.csv', col_names = FALSE)
+} # function for creating trap file using the 'sprung' data frame and and the site
+
+sprungify(sprung, site_code = 'GRNCAR')
 
 # Create capture file
-capt<-smamms %>%
-  filter(!is.na(indID))%>% # captures only
-  mutate(session = as.factor(paste0(site, '-', species)), # session: unique for each species at each site
-         occassion = ifelse(is.na(catnum), day, paste0('-', day))) %>% # adding a - for animals that died on capture
-  filter(species=='PEMA') %>% # PEMA only
-  filter(site=='HICORN') %>% # just one site, for a test
-  select(session, indID, occassion, trap) %>% 
-  rename(session = session,
-         ID = indID,
+
+captify <- function(x, site_code, species_code) {
+  capt<-smamms %>% 
+    filter(!is.na(indID))%>% # captures only
+    mutate(session = as.factor(paste0(site, '-', species)),
+           occassion = ifelse(
+             is.na(catnum), day, paste0('-', day)
+             )) %>% # adding a - for animals that died on capture
+    filter(species==species_code) %>%
+    filter(site==site_code) %>%
+    select(session, indID, occassion, trap) %>% 
+    rename(session = session,
+           ID = indID,
          detector = trap)
+ 
+   capt$detector <- as.factor(capt$detector)
+  
+  capt <- as.data.frame(capt)
+  
+  write_csv(capt,'smamms_capt.csv', col_names = FALSE)
+} # function for creating capture history file using the 'smamms' data frame, the site, and the species
 
-capt$detector <- as.factor(capt$detector)
-
-capt <- as.data.frame(capt)
-
-write_csv(capt,'smamms_capt.csv', col_names = FALSE) # read.capthist does NOT work with column names (headers)
+captify(smamms, site_code = 'MIXWAT', species_code = 'PEMA')
 
 # Create capture history object
 
 smammCH <- read.capthist('smamms_capt.csv', 'smamms_trap.csv',
                          detector = 'multi',
                          fmt = 'trapID',
-                         noccasions = 3)
+                         noccasions = 3,
+                         binary.usage = FALSE)
 
 ```
 
@@ -280,7 +322,7 @@ H_boxplot <- ggplot(density, aes(x = severity, y = D)) +
 
 H_boxplot
 
-# Calculate mean diversity for each treatment
+# Calculate mean density for each treatment
 
 D_summary <- density %>% 
   group_by(severity) %>% 
@@ -290,3 +332,38 @@ D_summary <- density %>%
   )
 
 ```
+
+
+```{r automate for each site, eval=FALSE, include=FALSE}
+
+# Create trap file
+trap1 <- trap %>% 
+  rename(detector = trapID)
+trapf<-read.traps(data = trap1, detector = "multi", trapID = 'detector')
+# NEED CODE TO ADD TRAPPING EFFORT, site == i
+write_csv(trap1,'smamms_trap.csv', col_names = FALSE)
+
+# Create capture file
+capt<-smamms %>%
+  filter(!is.na(indID))%>% # captures only
+  mutate(session = as.factor(paste0(site, '-', species)),
+         occassion = ifelse(is.na(catnum), day, paste0('-', day))) %>%
+  filter(species=='PEMA') %>%
+  filter(site==i) %>% 
+  select(session, indID, occassion, trap) %>% 
+  rename(session = session,
+         ID = indID,
+         detector = trap)
+capt$detector <- as.factor(capt$detector)
+capt <- as.data.frame(capt)
+write_csv(capt,'smamms_capt.csv', col_names = FALSE)
+
+# Create capture history object
+smammCH <- read.capthist('smamms_capt.csv', 'smamms_trap.csv',
+                         detector = 'multi',
+                         fmt = 'trapID',
+                         noccasions = 3)
+
+```
+
+
