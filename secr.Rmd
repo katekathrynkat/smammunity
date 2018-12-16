@@ -29,8 +29,8 @@ meta <- read_csv('sites.csv')
 
 Multi-session model:
 
-- combine all sites into one model, with each 'session' consisting of  site
-- add severity as a covariate
+- combine all sites into one model, with each 'session' consisting of site
+- add severity as a covariate (Session covariates should be provided in the secr.fit argument 'sessioncov' (a dataframe))
 - add block as a covariate?
 - create separate model for each species (starting with PEMA)
 - account for variable trapping effort: SPRU or non-target capture = 0.5 usage; MISS = 1 usage
@@ -95,11 +95,12 @@ capt <- smamms %>%
   mutate(occassion = ifelse( # adding a - for animals that died on capture
            is.na(catnum), day, paste0('-', day)
            )) %>% 
-  filter(species=='PEMA') %>%
+  filter(species=='PEMA') %>% 
   select(site, indID, occassion, trap) %>% 
   rename(session = site,
          ID = indID,
-         detector = trap)
+         detector = trap) %>% 
+  arrange(session)
 
 capt$detector <- as.factor(capt$detector)
 
@@ -123,9 +124,9 @@ trapfiles <- c('trapfile.GRNHOU.csv', 'trapfile.GRNMAS.csv', 'trapfile.GRNTUR.cs
                'trapfile.HICORN.csv', 'trapfile.HIDODD.csv', 'trapfile.HITEDD.csv', 
                'trapfile.HICOWS.csv', 'trapfile.HISQUE.csv', 'trapfile.HIWALK.csv', 
                'trapfile.HIBADR.csv', 'trapfile.HICAMP.csv', 'trapfile.HISHRU.csv')
+trapfiles <- sort(trapfiles)
 
 # Use read.capthist to make a capture history object
-
 smammCH <- read.capthist('smamms_capt.csv', trapfiles,
                          detector = 'multi',
                          fmt = 'trapID',
@@ -135,138 +136,11 @@ smammCH <- read.capthist('smamms_capt.csv', trapfiles,
 ```
 
 
-
-```{r create files}
-
-# Create trap file
-
-# Data frame of sprung/missing traps
-sprung <- smamms %>% 
-  filter(species == 'SPRU' | species == 'MISS') %>%
-  select(site, day, trap, species) %>% 
-  mutate(usage = case_when(
-    species == 'SPRU' ~ '0.5',
-    species == 'MISS' ~ '0'
-  ))
-
-# Data frame of sprung/missing traps, plus traps with non-PEMA captures
-sprung_PEMA <- smamms %>% 
-  filter(species != 'PEMA') %>%
-  select(site, day, trap, species) %>% 
-  mutate(usage = case_when(
-    species == 'SPRU' ~ '0.5',
-    species == 'MISS' ~ '0',
-    species != 'SPRU' & species != 'MISS' ~ '0.5'
-  ))
-
-det_effort <- function(x, session) {
-  x %>% 
-    filter(day == session) %>% 
-    full_join(trap, by = c('trap' = 'trapID')) %>% 
-    arrange(trap) %>% 
-    mutate(effort = case_when(
-      !is.na(usage) ~ usage,
-      is.na(usage) ~ '1'
-    )) %>% 
-    select(trap, x, y, effort)
-} # function for creating vector of effort for each session
-
-sprungify <- function(x, site_code) {
-  sprung_site <- x %>% filter(site == site_code)
-  
-  sprung1 <- det_effort(sprung_site, 1)
-  sprung2 <- det_effort(sprung_site, 2)
-  sprung3 <- det_effort(sprung_site, 3)
-  
-  sprung_all <- full_join(sprung1, sprung2,
-                          by = c('trap', 'x', 'y')) %>% 
-    full_join(sprung3, by = c('trap', 'x', 'y')) %>% 
-    mutate(effort = paste(effort.x, effort.y, effort,
-                          sep = ' ')) %>% 
-    select(trap, x, y, effort)
-} # function for creating trap data frame using the 'sprung' data frame and and the site
-
-sprungify(sprung_PEMA, site_code = 'MIXRIV')
-write_csv(sprung_all, 'smamms_trap.csv', col_names = FALSE)
-
-# Create capture file
-
-captify <- function(x, site_code, species_code) {
-  capt <- x %>% 
-    filter(!is.na(indID))%>% # captures only
-    mutate(session = as.factor(paste0(site, '-', species)),
-           occassion = ifelse(
-             is.na(catnum), day, paste0('-', day)
-             )) %>% # adding a - for animals that died on capture
-    filter(species==species_code) %>%
-    filter(site==site_code) %>%
-    select(session, indID, occassion, trap) %>% 
-    rename(session = session,
-           ID = indID,
-           detector = trap)
- 
-   capt$detector <- as.factor(capt$detector)
-  
-  capt <- as.data.frame(capt)
-  
-  write_csv(capt,'smamms_capt.csv', col_names = FALSE)
-} # function for creating capture history file using the 'smamms' data frame, the site, and the species
-
-captify(smamms, site_code = 'MIXWAT', species_code = 'PEMA')
-
-# Create capture history object
-
-smammCH <- read.capthist('smamms_capt.csv', 'smamms_trap.csv',
-                         detector = 'multi',
-                         fmt = 'trapID',
-                         noccasions = 3,
-                         binary.usage = FALSE)
-
-```
-
-
-```{r multi-session}
-
-# Create a trap file for each session
-
-sprungify(sprung_PEMA, site_code = 'GRNCAR')
-
-write_csv(trap, 'traps.GRNCAR.csv', col_names = FALSE)
-
-# Create capture file 
-
-capt <- smamms %>% 
-  filter(!is.na(indID))%>% # captures only
-  mutate(session = as.factor(paste0(site, '-', species)),
-         occassion = ifelse(
-           is.na(catnum), day, paste0('-', day)
-           )) %>% # adding a - for animals that died on capture
-  filter(species=='PEMA') %>%
-  select(site, indID, occassion, trap) %>% 
-  rename(session = site,
-         ID = indID,
-         detector = trap)
-
-capt$detector <- as.factor(capt$detector)
-
-capt <- as.data.frame(capt)
-
-write_csv(capt,'smamms_capt.csv', col_names = FALSE)
-
-# Create capture history object
-
-smammCH <- read.capthist('smamms_capt.csv', c('smamms_trap.csv'),
-                         detector = 'multi',
-                         fmt = 'trapID',
-                         noccasions = 3,
-                         binary.usage = FALSE)
-
-```
-
 ```{r summary}
 
-# Summary
+# Summaries
 summary(smammCH)
+summary(smammCH, terse = TRUE)
 
 # Plot
 par(mar = c(1,1,3,1)) # reduce margins
@@ -274,19 +148,39 @@ plot(smammCH, tracks=TRUE)
 
 # Histogram of movement distance
 m <- unlist(moves(smammCH))
-par(mar = c(3.2,4,1,1), mgp = c(2.1,0.6,0)) # reduce margins
 hist(m, xlab = "Movement m", main = "")
 
 ```
 
 
+```{r habitat masks}
+
+# Quick estimate of sigma and buffer
+initialsigma <- gather(as_data_frame(RPSV(smammCH, CC = TRUE))) %>% 
+  rename(session = key,
+         sigma = value) %>% 
+  mutate(buffer = sigma * 4) %>% # sigma * 4 is a rule of thumb for buffer
+  arrange(sigma)
+# Highest buffer is 121
+
+# Make habitat masks
+masks <- make.mask(traps(smammCH),
+                   buffer = 121, # highest value from 'initialsigma' dataframe
+                   type = 'trapbuffer')
+
+```
+
+
+NEED HABITAT MASK FOR EACH SESSION
+Remember to do retrospective buffer check: ESA plots
+Change grid cell size?
+
 ```{r basic model}
 
 # Test a basic model
-initialsigma <- RPSV(smammCH, CC = TRUE) # quick and biased estimate of sigma
 
 fit <- secr.fit(smammCH,
-                buffer = 4 * initialsigma, # unlikely that PEMA will go outside this parameter
+                mask = masks,
                 trace = FALSE)
 
 fit # D in the last table is the estimated density

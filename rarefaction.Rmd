@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Load necessary packages
 library(tidyverse)
 library(vegan)
+library(iNEXT)
 
 # Load necessary data
 smamms <- read_csv('smamms.csv')
@@ -94,21 +95,42 @@ row.names(matrix_sev) <- treats # add treatments to matrix as row names
 # Species accumulation curves
 
 accum_low <- specaccum(matrix_low, # low severity
-                       method = 'random', 
+                       method = 'rarefaction', 
                        permutations = 100)
 
 accum_med <- specaccum(matrix_med, # medium severity
-                       method = 'random',
+                       method = 'rarefaction',
                        permutations = 100)
 
 accum_high <- specaccum(matrix_high, # high severity
-                        method = 'random',
+                        method = 'rarefaction',
                         permutations = 100)
 
 # Plot curves
-plot(accum_low)
-lines(accum_med)
-lines(accum_high)
+plot(accum_low,
+     ci = 2, # 95% confidence interval
+     ci.type = 'polygon',
+     ci.col = rgb(red=0, green=1, blue=0, alpha=0.25),
+     ci.lty = 0,
+     lwd = 2,
+     col = 'darkgreen',
+     xlab = 'Sites',
+     ylab = 'Rarefaction')
+lines(accum_med,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon',
+      ci.col = rgb(red=1, green=0.5, blue=0, alpha=0.25),
+      ci.lty = 0,
+      lwd = 2,
+      col = 'orange')
+lines(accum_high,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon',
+      ci.col = rgb(red=1, green=0, blue=0, alpha=0.25),
+      ci.lty = 0,
+      lwd = 2,
+      col = 'red'
+      )
 
 ```
 
@@ -219,5 +241,7 @@ curves_sev <- rarecurve(matrix_sev,
                         col = colors,
                         lwd = 2,
                         label = FALSE)
+
+iNEXT()
 
 ```

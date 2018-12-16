@@ -130,7 +130,7 @@ n_boxplot <- ggplot(abundance, aes(x = severity, y = n)) +
   scale_fill_manual(values = colors) +
   theme_minimal() +
   labs(x = 'Fire Severity',
-       y = 'Abundance (number of indv)') +
+       y = 'Total small mammal abundance') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
