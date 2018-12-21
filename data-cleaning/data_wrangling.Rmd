@@ -1,0 +1,92 @@
+---
+title: "data_wrangling"
+author: "Kate"
+date: "December 20, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages and data, include=FALSE}
+
+# Load necessary packages
+library(tidyverse)
+
+# Load necessary data
+smamms <- read_csv('./data/smamms_clean.csv')
+site_meta <- read_csv('./data/site_metadata.csv')
+spp_meta <- read_csv('./data/species_info.csv')
+
+```
+
+
+
+```{r combined data frame}
+
+# Create species dataframe with shortened binomials
+
+spp_names <- spp_meta %>% 
+  mutate(binomial_short = paste0(
+    substring(binomial,1,1),
+    ". ",
+    gsub(".* ", '', binomial)
+  )) %>% 
+  select(family, species, common_name, binomial, binomial_short)
+
+# Combine smamm and metadata
+
+full_data <- full_join(smamms, site_meta, by = 'site') %>% 
+  left_join(., spp_names, by = 'species') %>% 
+  select(site, severity, date, day, trap, trap.type, indID, species, binomial, binomial_short, family, age, sex, breed, recap, weight, body.lgth, tail.lgth, comments, catnum)
+
+write.table(full_data, "./data/full_data.csv", quote=F, sep=",", row.names=F)
+
+
+```
+
+
+```{r unique animals}
+
+full_data <- full_data %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+# Create data frame with one row per unique individual
+unique_smamms <- full_data %>% 
+  filter(species != 'MISS' & species != 'SPRU') %>% # remove SPRU and MISS
+  group_by(indID) %>% 
+  arrange(-day) %>% 
+  filter(row_number()==1) %>% # filter by unique animals (only keep record from last capture)
+  ungroup() %>% 
+  select(site, severity, species, binomial, binomial_short, family, age, sex, breed)
+
+write.table(unique_smamms, "./data/unique_smamms.csv", quote=F, sep=",", row.names=F)
+
+
+```
+
+
+```{r trapping effort}
+
+# Data frame of trapping effort at each site
+
+effort <- full_data %>% 
+  filter(species == 'SPRU' | species == 'MISS') %>%
+  select(site, day, trap, species) %>% 
+  mutate(usage = case_when(
+    species == 'SPRU' ~ 0.5, # sprung traps coded as 0.5 usage
+    species == 'MISS' ~ 1 # missing traps coded as 1 usage (to be subtracted)
+  )) %>% 
+  group_by(site) %>% 
+  summarize(sprung = sum(usage)) %>% 
+  mutate(effort = (300 - sprung)/300) %>% 
+  select(site, effort)
+
+write.table(effort, "./data/effort.csv", quote=F, sep=",", row.names=F)
+
+```
+

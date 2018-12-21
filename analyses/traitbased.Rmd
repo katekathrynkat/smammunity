@@ -1,0 +1,63 @@
+---
+title: "traitbased"
+author: "Kate"
+date: "December 16, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages & data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+
+# Load necessary data
+
+smamms <- read_csv('smamms.csv')
+site_meta <- read_csv('sites.csv')
+spp_meta <- read_csv('species_info.csv')
+pantheria <- read_csv('PanTHERIA.csv', na = '-999') # we used the 05 taxonomy, which is the same as the 93 taxonomy for our 11 spp.
+
+```
+
+
+```{r simplified data frames, include=FALSE}
+
+# Order levels of the 'severity' column in the 'meta' data frame
+
+site_meta$severity <- factor(meta$severity, levels = c('unb', 'mod', 'hi'))
+
+# Create combined and simplified data frame with only unique indiviuals
+
+smamm_unique <- full_join(smamms, site_meta, by = 'site') %>% 
+  filter(species != 'MISS' & species != 'SPRU') %>% # remove sprung/missing traps
+  group_by(indID) %>% 
+  filter(row_number()==1) %>% # keep only 1 record per unique individual
+  ungroup() %>% 
+  select(site, severity, species, age, sex, breed)
+
+# Create species dataframe with shortened binomials, for only the 11 species of interest
+
+spp_names <- semi_join(spp_info, smamms, by = 'species') %>% 
+  mutate(binomial_short = paste0(
+    substring(binomial,1,1),
+    ". ",
+    gsub(".* ", '', binomial)
+  )) %>% 
+  select(family, species, common_name, binomial, binomial_short)
+
+# Filter PanTHERIA data
+
+pan_spp <- semi_join(pantheria, spp_names, by = 'binomial') %>% 
+  select(order, family, genus, species, binomial, activity_cycle, body_mass, body_length, diet_breadth, gestation, habitat_breadth, home_range, home_range_indv, litter_size, annual_litters, max_longevity, pop_density, age_sexualmaturity, trophic_level)
+
+```
+
+

@@ -1,0 +1,747 @@
+---
+title: "data_cleaning"
+author: "Kate"
+date: "December 20, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages & data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+
+# Load necessary data
+
+dat <- read_csv('./data/Mammals_proofed.csv',
+                na = c('MD', ''),
+                col_types = cols (day = col_character()))
+
+```
+
+
+```{r reformat data}
+
+# Change variable classes
+
+dat$date <- as.Date(dat$date, format="%d-%b-%y") # change date to date format
+dat$left.tag <- as.numeric(dat$left.tag) # change left tag to numeric
+dat$right.tag <- as.numeric(dat$right.tag) # change right tag to numeric
+dat$total.wt <- as.numeric(dat$total.wt) # change total weight to numeric
+dat$bag.wt <- as.numeric(dat$bag.wt) # change bag weight to numeric
+dat$body.lgth <- as.numeric(dat$body.lgth) # change body length to numeric
+dat$tail.lgth <- as.numeric(dat$tail.lgth) # change tail length to numeric
+dat$site <- as.factor(dat$site) # change site to factor
+dat$trap <- as.factor(dat$trap) # change trap to factor
+dat$species <- as.factor(dat$species) # change species to factor
+dat$code <- as.factor(dat$code) # change code to factor
+
+# Fix known mistakes
+
+dat[dat$capID==363,"recap"] <- "N" # re-examined at Bohart - no clipped fur
+dat[dat$capID==372,"recap"] <- "N" # re-examined at Bohart - no clipped fur
+dat[dat$capID==727,"right.tag"] <- 251 # re-tagged
+
+
+
+# 1491 obs of 22 variables
+
+```
+
+###Create unique identifiers for each individual
+
+```{r unique identifier}
+
+# Create a unique identifier for each individual
+
+dat$indID <- rep(NA) # add blank column
+
+counter <- 1
+counter2 <- 1
+
+for (i in 1:dim(dat)[1]) {
+  if(!is.na(dat$left.tag[i]) & is.na(dat$right.tag[i])) {
+    dat$indID[i]<-sprintf("%003d", dat$left.tag[i]) # left-only tagged animals coded as [left tag]
+  } else if(is.na(dat$left.tag[i]) & !is.na(dat$right.tag[i])) {
+    dat$indID[i]<-sprintf("%003d", dat$right.tag[i]) # right-only tagged animals coded as [right tag]
+  } else if(!is.na(dat$left.tag[i]) & !is.na(dat$right.tag[i])) {
+    dat$indID[i]<-paste0(sprintf("%003d", dat$left.tag[i]), sprintf("%003d", dat$right.tag[i])) # double tagged animals coded as [left tag] & [right tag]
+  } else if(dat$recap[i]=="N" & !is.na(dat$catnum[i]) & is.na(dat$left.tag[i]) & is.na(dat$right.tag[i])) {
+    dat$indID[i]<-as.character(dat$catnum[i]) # morts on first cap coded as [catnum]
+  } else if(dat$recap[i]=="N" & !is.na(dat$recap[i]) & dat$clipped[i]=="CLIPPED" &
+     !is.na(dat$clipped[i])) {
+    dat$indID[i]<-paste0("CLIP-", counter) # first cap shrews coded as [CLIP-#]
+    counter<-counter+1
+  } else if(dat$recap[i]=="N" & !is.na(dat$recap[i]) & dat$day[i]=="3" & !is.na(dat$day[i]) &
+     is.na(dat$left.tag[i]) & is.na(dat$right.tag[i]) &
+     is.na(dat$catnum[i]) & is.na(dat$clipped[i])) {
+    dat$indID[i]<-paste0("DAY3-", counter2) # escapees with first cap on last day coded as [DAY3-#]
+    counter2<-counter2+1
+  }
+}
+
+# Assign unique ID to recap shrews
+
+dat[dat$capID==369,"indID"] <- dat[dat$capID==343,"indID"] # site has only 1 previous live release
+
+# Assign unique ID to escapees of unique species
+
+dat[dat$capID==311,"indID"] <- "UNIQ-1" # only shrew caught at site
+dat[dat$capID==1364,"indID"] <- "UNIQ-2" # only squirrel caught at site
+
+```
+
+
+###Miscellaneous QA/QC
+
+
+```{r misc QA QC}
+
+#  Miscellaneous QA/QC # 
+
+dat1 <- dat # data frame for 1st round of QA/QC
+
+
+
+# Update trap day
+
+dat1[dat1$day==1.5,"day"] <- 1 # one animal missed during morning checks so session coded as 1.5, change to 1
+dat1 <- dat1[dat1$day==0 | dat1$day==1 | dat1$day==2 | dat1$day==3,] # only include sessions 0-3 (no practice = P1, P2)
+
+# Change non-capture species IDs based on comments
+
+dat1[dat1$capID==23,"species"] <- "ROBB"
+dat1[dat1$capID==26,"species"] <- "ROBB"
+dat1[dat1$capID==180,"species"] <- "ROBB"
+dat1[dat1$capID==327,"species"] <- "ROBB"
+dat1[dat1$capID==431,"species"] <- "ROBB"
+dat1[dat1$capID==869,"species"] <- "ROBB"
+dat1[dat1$capID==1368,"species"] <- "ROBB"
+
+# Update species identifications
+
+dat1[dat1$species=="SOVA" | dat1$species=="SOXX","species"] <- "SOTR" # all shrews probably SOTR (consulted with Bohart)
+dat1[dat1$capID==306,"species"] <- "PEMA" # re-identified at Bohart
+dat1[dat1$capID==1341,"species"] <- "PEMA" # re-identified at Bohart
+dat1[dat1$capID==106,"species"] <- "PEMA" # re-identified at Bohart
+dat1[dat1$species=="TAMI","species"] <- "TAAM" # re-identified from pictures
+dat1[dat1$species=="URBE","species"] <- "SPBE" # too big to be URBE
+
+# Updated missing bag weights (inferred from adjacent bag weights)
+
+dat1[dat1$capID==310,"bag.wt"]<-41
+dat1[dat1$capID==392,"bag.wt"]<-34
+dat1[dat1$capID==396,"bag.wt"]<-34
+dat1[dat1$capID==422,"bag.wt"]<-34
+dat1[dat1$capID==440,"bag.wt"]<-33
+dat1[dat1$capID==519,"bag.wt"]<-33
+dat1[dat1$capID==779,"bag.wt"]<-15
+dat1[dat1$capID==811,"bag.wt"]<-32
+dat1[dat1$capID==1001,"bag.wt"]<-42
+dat1[dat1$capID==1216,"bag.wt"]<-34
+dat1[dat1$capID==1322,"bag.wt"]<-34
+dat1[dat1$capID==1463,"bag.wt"]<-29
+dat1[dat1$capID==495,"bag.wt"]<-50 # 33g adult squirrel seems unlikely, so inferred bag weight from adjacent bag weight
+
+```
+
+### QA/QC Queries
+
+```{r first capture}
+
+# Do all recap=Y have a previous capture with the same indID for each site?
+
+sites <- levels(dat1$site)
+probs <- data.frame(capID=integer(),
+                    code=factor(),
+                    species=factor(), 
+                    indID=character())
+
+for (i in sites) {
+  persite<-dat1[dat1$site==i,]
+  recapi<-ifelse(persite$indID!="" & persite$recap=="Y", persite$indID, "")
+  firstcapi<-ifelse(persite$indID!="" & persite$recap=="N", persite$indID, "")
+  missingi<-ifelse(recapi %in% firstcapi,"","OHNO")
+  probs<-rbind(probs, persite[missingi=="OHNO", c("capID", "code", "species", "indID")])
+}
+
+dim(probs) # 26 problems to fix
+probs
+
+dat1[dat1$capID==218,"indID"] <- "211" # misread tag 211 as 112
+dat1[dat1$capID==410,"indID"] <- "768" # misread tag 768 as 892
+dat1[dat1$capID==421,"indID"] <- "660" # misread tag 660 as 099
+dat1[dat1$capID==584,"indID"] <- "749013" # added second tag at recapture
+dat1[dat1$capID==585,"indID"] <- "750269" # added second tag at recapture
+dat1[dat1$capID==599,"indID"] <- "730988" # misread left tag 730 as 130
+dat1[dat1$capID==590,"indID"] <- "730988" # added second tag at recapture
+dat1[dat1$capID==614,"indID"] <- "743993" # added second tag at recapture
+dat1[dat1$capID==779,"indID"] <- "475" # most likely misread tag 475 as 479
+dat1[dat1$capID==1102,"indID"] <- "241" # misread tag 241 as 231 (blind mouse)
+dat1[dat1$capID==1147,"indID"] <- "890090" # misread left tag 890 as 068
+dat1[dat1$capID==1271,"recap"] <- "N" # recap from practice grid; recoded as new
+dat1[dat1$capID==1258,"recap"] <- "N" # recap from practice grid; recoded as new
+dat1[dat1$capID==1339,"indID"] <- "041040" # misread right tag 040 as 044
+dat1[dat1$capID==1279,"indID"] <- "009046" # forgot to record second tag
+dat1[dat1$capID==1279,"recap"] <- "N" # recap from practice grid; recoded as new
+dat1[dat1$capID==1301,"indID"] <- "713" # misread tag 713 as 413
+dat1[dat1$capID==1343,"indID"] <- "324" # misread tag 324 as 342
+dat1[dat1$capID==1329,"recap"] <- "N" # recap from practice grid; recoded as new
+dat1[dat1$capID==129,"indID"] <- "488" # misread tag 488 as 884
+dat1[dat1$capID==1429,"indID"] <- "049" # misread tag 049 as 640
+dat1[dat1$capID==997,"indID"] <- "204" # misread tag 204 as 209
+
+```
+
+
+```{r movement between sites}
+
+# Did any animals move between sites?
+
+ID <- levels(as.factor(dat1$indID))
+migrants <- data.frame(capID=integer(),
+                       code=factor(),
+                       site=factor(),
+                       indID=character())
+
+for (i in ID) {
+  perID<-dat1[dat1$indID==i & !is.na(dat1$indID), c("capID", "code", "site", "indID")]
+  if(length(unique(perID$site))>1 & length(unique(perID$site))<10)
+    migrants<-rbind(migrants, perID)
+}
+
+migrants # 2 animals supposedly moved between sites
+
+dat1[dat1$capID==1273,"indID"] <- "247B" # both new captures, 2nd recoded as different indID
+dat1[dat1$capID==1182,"indID"] <- "900B" # both new captures, 2nd recoded as different indID
+
+```
+
+
+```{r tail lengths}
+
+# Do tail lengths match species IDs?
+
+# Let's look at PEBO/PETR with weirdly short tails...
+
+dat1$tail.ratio <- dat1$tail.lgth/dat1$body.lgth # create column for tail:body length ratio
+
+PEBOTR <- dat1[dat1$species=="PEBO" | dat1$species=="PETR",]
+PEBOTR <- PEBOTR[!is.na(PEBOTR$tail.ratio),]
+PEBOTR <- PEBOTR[PEBOTR$tail.ratio<0.9,]
+PEBOTR # 4  mice with very short tails for PEBO...
+
+dat1[dat1$capID==489,"species"] <- "PEMA" # PEMA based on tail length and other capture
+dat1[dat1$capID==490,"species"] <- "PEMA" # PEMA based on tail length and other capture
+dat1[dat1$capID==494,"species"] <- "PEMA" # PEMA based on tail length and other capture
+dat1[dat1$capID==833,"species"] <- "PEMA" # PEMA based on tail length and other capture
+
+# Now let's look at PEMA with weirdly long tails...
+
+withtails <- dat1[!is.na(dat1$tail.ratio),]
+long <- data.frame(capID=integer(), code=factor(), species=factor(), indID=character(), tail.ratio=numeric())
+
+for (i in 1:dim(withtails)[1]) {
+  longtail<-withtails[i,c("capID", "code", "species", "indID", "tail.ratio")]
+  if(longtail$tail.ratio>1)
+    long<-rbind(long, longtail)
+}
+
+long[long$species!="PEBO" & long$species!="PETR",] # these mice have real long tails for PEMA...
+
+# too bad, for now we're just going to assume they're funky PEMA with elegant tails
+
+```
+
+
+```{r species changes}
+
+# Did any animals change species?
+
+mutants <- data.frame(capID=integer(),
+                      code=factor(),
+                      species=factor(),
+                      indID=character())
+
+for (i in ID) {
+  perID<-dat1[dat1$indID==i & !is.na(dat1$indID), c("capID", "code", "species", "indID")]
+  if(length(unique(perID$species))>1 & length(unique(perID$species))<10)
+    mutants<-rbind(mutants, perID)
+}
+
+length(unique(mutants$indID)) # 28 animals supposedly changed species
+mutants
+
+dat1[dat1$capID==1120,"species"] <- "PEMA" # PEMA based on cumulative tail length
+dat1[dat1$capID==835,"species"] <- "PEMA" # PEMA based on cumulative tail length
+dat1[dat1$capID==381,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==93,"species"] <- "PEMA" # PEMA based on cumulative tail length 
+dat1[dat1$capID==1089,"species"] <- "PEMA" # PEMA based on other capture where it didn't escape
+dat1[dat1$capID==1274,"species"] <- "PEBO" # PEBO based on cumulative tail length
+dat1[dat1$capID==766,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==1292,"species"] <- "PEMA" # confirmed ID from mort
+dat1[dat1$capID==550,"species"] <- "PEBO" # PEBO based on majority of IDs
+dat1[dat1$capID==1479,"species"] <- "PEMA" # insanely long tail length probaby a typo
+dat1[dat1$capID==214,"species"] <- "PEMA" # no ear measurement, PEMA based on majority of IDs
+dat1[dat1$capID==536,"species"] <- "PEMA" # PEMA based on cumulative tail length
+dat1[dat1$capID==1487,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==693,"species"] <- "PEMA" # PEMA measurements more trustworthy
+dat1[dat1$capID==1327,"species"] <- "SPBE" # SPBE based on weight and previous cap
+dat1[dat1$capID==1278,"species"] <- "PEMA" # PEMA based on cumulative tail length 
+dat1[dat1$capID==824,"species"] <- "PEMA" # ID from mort
+dat1[dat1$capID==1252,"species"] <- "TASE" # TASE based on second cap
+dat1[dat1$capID==860,"species"] <- "TAAM" # TAAM based on comments
+dat1[dat1$capID==688,"species"] <- "PEMA" # no ear measurement, PEMA based on size
+dat1[dat1$capID==700,"species"] <- "PEMA" # no ear measurement, PEMA based on size
+dat1[dat1$capID==1238,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==1381,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==731,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==725,"species"] <- "PEMA" # most likely tiny PEMA based on measurements
+dat1[dat1$capID==1300,"species"] <- "PEMA" # PEMA based on majority of IDs
+dat1[dat1$capID==182,"species"] <- "PEMA" # trusting AMM over MJH
+dat1[dat1$capID==920,"species"] <- "PEMA" # more likely to screw up body length than tail length
+dat1[dat1$capID==114,"species"] <- "PEMA" # PEMA based on cumulative tail length
+dat1[dat1$capID==129,"species"] <- "PEMA" # PEMA based on cumulative tail length
+
+```
+
+
+```{r weights}
+
+# Do the weights makes sense?
+
+dat1$weight <- dat1$total.wt-dat1$bag.wt
+squirrel <- dat1[dat1$species=="SPBE",]
+squirrel <- squirrel[!is.na(squirrel$weight),]
+squirrel <- squirrel[squirrel$weight<350,]
+squirrel # all these small squirrels are probaby just subadults
+
+smolchippies <- dat1[dat1$species=="TAAM",]
+smolchippies <- smolchippies[!is.na(smolchippies$weight),]
+smolchippies <- smolchippies[smolchippies$weight<36 | smolchippies$weight>77,]
+smolchippies # all checks out
+
+bigchippies <- dat1[dat1$species=="TASE" | dat1$species=="TAQU",]
+bigchippies <- bigchippies[!is.na(bigchippies$weight),]
+bigchippies <- bigchippies[bigchippies$weight<54 | bigchippies$weight>120,]
+bigchippies # all these small chippies are probaby just subadults
+
+```
+
+
+```{r unidentified animals}
+
+# What about unidentified animals? (PEXX, TAXX)
+
+PEXX <- dat1[dat1$species=="PEXX",]
+PEXX # 2 escapees with indID, the rest are lost causes
+
+dat1[dat1$capID==538,"species"] <- "PEMA" # PEMA based on comments
+dat1[dat1$capID==1245,"indID"] <- NA # no possibility of ID, so deleted indID
+
+TAXX <- dat1[dat1$species=="TAXX",]
+TAXX # all escapees, lost causes ):
+
+```
+
+
+```{r trap happy animals}
+
+# Animals caught twice in the same day?
+
+traphap <- data.frame(capID=numeric(),
+                      code=factor(),
+                      trap=factor(),
+                      day=factor(),
+                      indID=character())
+
+for (i in ID) {
+  perID<-dat1[dat1$indID==i & !is.na(dat1$indID), c("capID", "code", "trap", "day", "indID")]
+  for (j in 1:3) {
+    perIDday<-perID[perID$day==j,]
+    if(length(perIDday$day)>1)
+      traphap<-rbind(traphap, perIDday)
+  }
+}
+
+traphap # 2 animals were caught twice in the same day
+
+dat1 <- dat1[!(dat1$capID==984),] # dumb mouse ran into another trap
+dat1 <- dat1[!(dat1$capID==856),] # another dumb mouse
+
+```
+
+
+```{r trap repeats}
+
+# 2 records for the same trap, same day?
+
+traps <- levels(dat1$trap)
+traps <- traps[1:100]
+duplicator <- data.frame(capID=numeric(),
+                         code=factor(),
+                         trap=factor(),
+                         day=factor(),
+                         indID=character())
+
+for (i in sites) {
+  persite<-dat1[dat1$site==i, c("capID", "code", "trap", "day", "indID")]
+  for (j in 0:3) {
+    perday<-persite[persite$day==j, c("capID", "code", "trap", "day", "indID")]
+    for (k in traps) {
+      pertrap<-perday[perday$trap==k, c("capID", "code", "trap", "day", "indID")]
+      if(dim(pertrap)[1]>1)
+        duplicator<-rbind(duplicator, pertrap)
+    }
+  }
+}
+
+length(unique(duplicator$trap)) # 8 repeat traps
+duplicator
+
+dat1[dat1$capID==380,"trap"] <- "J7" # datasheet looks like J7 and F7 at same time...probaby J7
+dat1[dat1$capID==519,"trap"] <- "F10" # from order traps were checked, seems likely this is supposed to be F10
+dat1[dat1$capID==529,"trap"] <- "H2" # likely typo (H7 instead of H2)
+dat1[dat1$capID==774,"trap"] <- "B8"# likely typo (A8 instead of B8)
+dat1[dat1$capID==876,"trap"] <- "H2"# wrote over H8 as H2 on datasheet
+dat1[dat1$capID==1203,"trap"] <- "E9"# likely typo (A9 instead of E9)
+dat1[dat1$capID==1250,"trap"] <- "B7"# likely typo (C7 instead of B7)
+# remaining repeat was two mammals caught in the same trap
+
+```
+
+
+```{r sex changes}
+
+# Did any animals change sex?
+
+sex <- data.frame(capID=integer(),
+                  code=factor(),
+                  species=factor(),
+                  indID=character(),
+                  sex=character(),
+                  breed=character())
+
+for (i in ID) {
+  perID<-dat1[dat1$indID==i & !is.na(dat1$indID),
+              c("capID", "code", "species", "indID", "sex","breed")]
+  if(length(unique(perID$sex))>1 & length(unique(perID$sex))<10)
+    sex<-rbind(sex, perID)
+}
+
+length(unique(sex$indID)) # 24 animals supposedly changed sex
+sex
+
+dat1[dat1$capID==969,"sex"] <- "F" # 2 of 3 captures indicate F, updated MD to F
+dat1[dat1$capID==969,"breed"] <- "P" # update breed accordingly
+dat1[dat1$capID==90,"sex"] <- "F" # first capture indicates F, updated MD to F
+dat1[dat1$capID==93,"sex"] <- "M" # 2 of 3 captures indicate M, updated MD to M
+dat1[dat1$capID==218,"sex"] <- "M" # 2 of 3 captures indicate M, updated F to M
+dat1[dat1$capID==218,"breed"] <- "N" # update breed accordingly
+dat1[dat1$capID==205,"sex"] <- "M" # 2 of 3 captures indicate M, updated F to M
+dat1[dat1$capID==205,"breed"] <- "T" # update breed accordingly
+dat1[dat1$capID==1065,"sex"] <- "M" # 2 of 3 captures indicate M, updated MD to M
+dat1[dat1$capID==1065,"breed"] <- "T" # update breed accordingly
+dat1[dat1$capID==1272,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==1272,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==743,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==743,"breed"] <- "L" # update breed accordingly
+dat1[dat1$capID==119,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==119,"breed"] <- "N" # update breed accordingly
+dat1[dat1$capID==187,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==187,"breed"] <- "P" # update breed accordingly
+dat1[dat1$capID==206,"sex"] <- "F" # 2 of 3 captures indicate F, updated MD to F
+dat1[dat1$capID==206,"breed"] <- "P" # update breed accordingly
+dat1[dat1$capID==1487,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==1487,"breed"] <- "P" # update breed accordingly
+dat1[dat1$capID==170,"sex"] <- "F" # 2 of 3 captures indicate F, updated M to F
+dat1[dat1$capID==391,"sex"] <- "M" # 2 of 3 captures indicate M, updated F to M
+dat1[dat1$capID==391,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==343,"sex"] <- "U" # changed to U because shrews are difficult to ID
+dat1[dat1$capID==343,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==769,"sex"] <- "M" # first capture indicates M, updated MD to M
+dat1[dat1$capID==769,"breed"] <- "T" # update breed accordingly
+dat1[dat1$capID==877,"sex"] <- "M" # first capture indicates M, updated U to M
+dat1[dat1$capID==1090,"sex"] <- "M" # trusting more experienced trapper, changed F to M
+dat1[dat1$capID==1090,"breed"] <- "T" # update breed accordingly
+dat1[dat1$capID==403,"sex"] <- "F" # trusting more experienced trapper, changed M to F
+dat1[dat1$capID==403,"breed"] <- "N" # update breed accordingly
+dat1[dat1$capID==682,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==682,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==708,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==708,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==725,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==725,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==792,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==792,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==580,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==580,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==658,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==658,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==1217,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==1217,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==1229,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==1229,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==1281,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==1281,"breed"] <- "U" # update breed accordingly
+dat1[dat1$capID==1327,"sex"] <- "U" # unclear, changed both to U
+dat1[dat1$capID==1327,"breed"] <- "U" # update breed accordingly
+
+```
+
+
+```{r breed changes}
+
+# Do breeding statuses match sexes?
+
+breed_f <- dat1 %>% 
+  filter(sex == 'F',
+         breed == 'T') # all females have appropriate breeding status
+
+breed_m <- dat1 %>% 
+  filter(sex == 'M',
+         breed == 'P' | breed == 'L') # all males have approprite breeding status
+
+
+
+# Did any male animals change repro?
+
+males <- dat1 %>% 
+  filter(sex == 'M')
+
+breed_m <- data.frame(capID=integer(),
+                      code=factor(),
+                      species=factor(),
+                      indID=character(),
+                      breed=character(),
+                      day=character())
+
+for (i in ID) {
+  perID<-males[males$indID==i & !is.na(males$indID),
+              c("capID", "code", "species", "indID","breed","day")]
+  if(length(unique(perID$breed))>1 & length(unique(perID$breed))<10)
+    breed_m<-rbind(breed_m, perID)
+}
+
+length(unique(breed_m$indID)) # 25 male animals supposedly changed breed
+breed_m
+
+dat1[dat1$capID==1149,"breed"] <- "T" # 2 of 3 captures indicate T, updated N to T
+dat1[dat1$capID==489,"breed"] <- "N" # updated U to N based on other capture
+dat1[dat1$capID==93,"breed"] <- "T" # updated MD to T based on previous capture
+dat1[dat1$capID==1325,"breed"] <- "T" # 2 of 3 captures indicate T, updated N to T
+dat1[dat1$capID==133,"breed"] <- "N" # 2 of 3 captures indicate N, updated T to N
+dat1[dat1$capID==295,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==313,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==260,"breed"] <- "N" # trusting more experienced trapper, changing T to N
+dat1[dat1$capID==739,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==758,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1462,"breed"] <- "T" # trusting more experienced trapper, changing N to T
+dat1[dat1$capID==152,"breed"] <- "T" # 2 of 3 captures indicate T, updated N to T
+dat1[dat1$capID==1253,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1330,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==169,"breed"] <- "T" # 2 of 3 captures indicate T, updated N to T
+dat1[dat1$capID==391,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==410,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==443,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==642,"breed"] <- "T" # changed to T based on comments
+# remaining 12 conflicts could be due to natural age progression (N --> T)
+
+
+
+# Did any female animals change repro?
+
+females <- dat1 %>% 
+  filter(sex == 'F')
+
+breed_f <- data.frame(capID=integer(),
+                      code=factor(),
+                      species=factor(),
+                      indID=character(),
+                      breed=character(),
+                      day=character())
+
+for (i in ID) {
+  perID<-females[females$indID==i & !is.na(females$indID),
+              c("capID", "code", "species", "indID","breed","day")]
+  if(length(unique(perID$breed))>1 & length(unique(perID$breed))<10)
+    breed_f<-rbind(breed_f, perID)
+}
+
+length(unique(breed_f$indID)) # 35 female animals supposedly changed breed
+breed_f
+
+dat1[dat1$capID==209,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==90,"breed"] <- "N" # updated to N based on previous capture
+dat1[dat1$capID==885,"breed"] <- "P" # trusting more experienced trapper, changed N to P
+dat1[dat1$capID==881,"breed"] <- "L" # trusting more experienced trapper, changed N to L
+dat1[dat1$capID==254,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==1007,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==952,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==999,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1123,"breed"] <- "N" # 2 of 3 captures indicate N, updated P to N
+dat1[dat1$capID==793,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==1272,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1288,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1343,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1389,"breed"] <- "N" # trusting more experienced trapper, changed P to N
+dat1[dat1$capID==1032,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==695,"breed"] <- "P" # 2 of 3 captures indicate P, updated L to P
+dat1[dat1$capID==1008,"breed"] <- "L" # 2 of 3 captures indicate L, updated P to L
+dat1[dat1$capID==714,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==150,"breed"] <- "N" # 2 of 3 captures indicate N, updated P to N
+dat1[dat1$capID==1175,"breed"] <- "P" # 2 of 3 captures indicate P, updated L to P
+dat1[dat1$capID==1264,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==1322,"breed"] <- "U" # conflicting information, changed to U
+dat1[dat1$capID==883,"breed"] <- "P" # trusting more experienced trapper, changed N to P
+dat1[dat1$capID==1216,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==8,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==623,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+dat1[dat1$capID==615,"breed"] <- "P" # 2 of 3 captures indicate P, updated N to P
+# remaining 12 conflicts could be due to natural age progression (N --> P --> L)
+
+```
+
+```{r ages}
+
+# Are breeding animals all adults?
+
+breed_age <- dat1 %>% 
+  filter(breed == 'P' | breed == 'L' | breed == 'T',
+         age != 'A') # 37 animals coded as S or J when they are breeding
+
+dat1 <- dat1 %>% 
+  mutate(age = case_when(
+    breed == 'P' | breed == 'L' | breed == 'T' ~ 'A',
+    TRUE ~ age
+  )) # code all reproductive individuals as adults
+
+
+# Are juveniles actually juveniles?
+
+juvies <- dat1 %>% 
+  filter(age == 'J') # 37 juveniles
+
+
+dat1 <- dat1 %>% 
+  mutate(age = case_when(
+    age == 'J' ~ 'S',
+    TRUE ~ age
+  )) # code all juveniles as subadults...juveniles would mean baby babies
+
+
+
+# Do any animals change age?
+
+age <- data.frame(capID=integer(),
+                  code=factor(),
+                  species=factor(),
+                  indID=character(),
+                  age=character(),
+                  sex=character(),
+                  breed=character())
+
+for (i in ID) {
+  perID<-dat1[dat1$indID==i & !is.na(dat1$indID),
+              c("capID", "code", "species", "indID","age","sex","breed")]
+  if(length(unique(perID$age))>1 & length(unique(perID$age))<10)
+    age<-rbind(age, perID)
+}
+
+length(unique(age$indID)) # 15 animals supposedly change age
+age
+
+# all age changes correspond with nulliparous/nonscrotal mice
+
+
+```
+
+
+###Export for analysis
+
+```{r export}
+
+#### Summary statistics ####
+
+dat1$indID<-as.factor(dat1$indID)
+dim(dat1[!is.na(dat1$indID),]) ###997 usable captures
+length(levels(dat1$indID)) ###554 unique animals
+sum(dat1$species=="DISD" | dat1$species=="DEST" | dat1$species=="MISS" |
+      dat1$species=="ROBB" | dat1$species=="SPRU") ###438 non-captures (no animal)
+sum(is.na(dat1$indID) & dat1$species!="DISD" & dat1$species!="DEST" & dat1$species!="MISS" &
+      dat1$species!="ROBB" & dat1$species!="SPRU") ###41 unsalvageable escapees ):
+
+
+
+#### Changes for analysis ####
+
+dat2<-dat1
+
+# Labeling escaped animals
+
+levels(dat2$species) <- c(levels(dat2$species),"ESCA")
+dat2[is.na(dat2$indID) &
+       dat2$species!="DISD" & dat2$species!="DEST" & dat2$species!="MISS" & dat2$species!="ROBB" & dat2$species!="SPRU",
+     "species"] <- "ESCA" # marked escaped individuals (captures missing indID) as ESCA
+
+# Updating non-capture codes
+
+dat2[dat2$species=="ESCA" | dat2$species=="DISD" | dat2$species=="SPRU",
+     "species"] <- "SPRU" # non-captures to be calculated as 1/2 available trap
+
+dat2[dat2$species=="DEST" | dat2$species=="MISS" | dat2$species=="ROBB",
+     "species"] <- "MISS" # non-captures to be calculated as 0 available trap
+
+# Remove pre-bait captures
+
+dat2 <- dat2[dat2$day!="0",] # remove pre-bait captures from dataset
+
+# Change U to NA
+
+dat2 <- dat2 %>% 
+  mutate(
+    age = case_when(
+      age == 'U' ~ NA_character_,
+      TRUE ~ age
+    ),
+    sex = case_when(
+      sex == 'U' ~ NA_character_,
+      TRUE ~ sex
+    ),
+    breed = case_when(
+      breed == 'U' ~ NA_character_,
+      TRUE ~ breed
+    )
+  )
+
+# Select only finalized columns for analysis
+
+final <- dat2 %>% 
+  select(site, date, day, trap, trap.type, indID, species, age, sex, breed, recap, weight, body.lgth, tail.lgth, comments, catnum)
+
+#### Summary stats ####
+final$indID<-as.factor(as.character(final$indID))
+dim(final[!is.na(final$indID),]) ###988 usable captures
+length(levels(final$indID)) ###545 unique animals
+sum(final$species=="SPRU" | final$species=="MISS") ###478 non-captures
+
+
+
+#### Export clean data ####
+
+write.table(final, "./data/smamms_clean.csv", quote=F, sep=",", row.names=F)
+
+```
+
+
+Notes:
+
+- Tag numbers left in left.tag and right.tag columns have not been updated; indID represents the correct ID
+- Some of the PEMA have suspiciously long tails, but I decided to trust the original IDs since there's no way to check
