@@ -1,15 +1,15 @@
 species,common_name,binomial,family,total_length,tail_length,weight
 SPLA,Golden-mantled ground squirrel,Spermophilus lateralis,Sciuridae,245-295mm,70-120mm,175-350g
-SPBE,California ground squirrel,Spermophilus beechyii,Sciuridae,360-500mm,140-230mm,350-885g
+SPBE,California ground squirrel,Otospermophilus beecheyi,Sciuridae,360-500mm,140-230mm,350-885g
 URBE,Beldings ground squirrel,Urocitellus beldingi,Sciuridae,265-295mm/270-315mm,60-75mm,230-500g/300-450g
 SCGR,Western gray squirrel,Sciurus griseus,Sciuridae,51-77cm,24-38cm,500-950g
 TADO,Douglas' squirrel,Tamiasciurus douglasii,Sciuridae,270-350mm,100-156mm,141-312g
 GLSA,Northern flying squirrel,Glaucomys sabrinus,Sciuridae,190-300mm,90-140mm,38-123g
-TAAM,Yellow-pine chipmunk,Tamias amoenus,Sciuridae,186-238mm,72-109mm,36-50g
-TAMI,Least chipmunk,Tamias minimus,Sciuridae,185-216mm,78-113mm,32-50g
-TAQU,Long-eared chipmunk,Tamias quadrimaculatus,Sciuridae,230-345mm/230-239mm,90-101mm/85-100mm,81-105g/74-89g
-TASE,Allen's (Shadow) chipmunk,Tamias senex,Sciuridae,223-281mm,94-122mm,90-120g
-TASP,Lodgepole chipmunk,Tamias speciosus,Sciuridae,197-229mm/220-222mm,67-102mm/79-100mm,55-69g/51-61g
+TAAM,Yellow-pine chipmunk,Neotamias amoenus,Sciuridae,186-238mm,72-109mm,36-50g
+TAMI,Least chipmunk,Neotamias minimus,Sciuridae,185-216mm,78-113mm,32-50g
+TAQU,Long-eared chipmunk,Neotamias quadrimaculatus,Sciuridae,230-345mm/230-239mm,90-101mm/85-100mm,81-105g/74-89g
+TASE,Allen's (Shadow) chipmunk,Neotamias senex,Sciuridae,223-281mm,94-122mm,90-120g
+TASP,Lodgepole chipmunk,Neotamias speciosus,Sciuridae,197-229mm/220-222mm,67-102mm/79-100mm,55-69g/51-61g
 NEFU,Dusky-footed woodrat,Neotoma fuscipes,Cricetidae,335-470mm,160-240mm,205-360g
 NECI,Bushy-tailed woodrat,Neotoma cinerea,Cricetidae,275-410mm/310-470mm,120-195mm/130-225mm,165-370g/180-585g
 PEMA,Deer mouse,Peromyscus maniculatus,Cricetidae,120-225mm,50-125mm,10-30g

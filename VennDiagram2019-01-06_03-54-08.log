@@ -1,0 +1,7 @@
+INFO [2019-01-06 03:54:08] [[1]]
+INFO [2019-01-06 03:54:08] all_spp
+INFO [2019-01-06 03:54:08] 
+INFO [2019-01-06 03:54:08] $filename
+INFO [2019-01-06 03:54:08] NULL
+INFO [2019-01-06 03:54:08] 
+ERROR [2019-01-06 03:54:08] Unexpected parameter length for 'category'

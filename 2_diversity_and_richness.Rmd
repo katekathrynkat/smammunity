@@ -1,0 +1,373 @@
+---
+title: "Shannon Diversity and Species Richess (rarefaction)"
+author: "Kate"
+date: "November 7, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=5, fig.height=3, fig.align='center')
+```
+
+
+```{r packages and data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+library(vegan)
+library(VennDiagram)
+library(eulerr)
+
+# Load necessary data
+
+smamms <- read_csv('./data/unique_smamms.csv') # using dataset with one row per unique individual
+effort <- read_csv('./data/effort.csv')
+
+```
+
+
+```{r data wrangling, include=FALSE}
+
+# Update classes
+
+smamms <- smamms %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+```
+
+
+```{r species matrices, include=FALSE}
+
+# Create a species matrix
+
+matrix_temp <- smamms %>% 
+  group_by(site, species) %>% 
+  tally() %>% # count individuals per species per site
+  spread(species, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+
+sites <- matrix_temp$site # vector of just sites
+
+matrix <- matrix_temp %>% 
+  select(-site) # remove site column for input into vegan
+
+matrix <- as.matrix(matrix)
+rownames(matrix) <- sites
+
+
+
+# Create a species matrix adjusted for trapping effort
+
+matrix_temp <- smamms %>% 
+  group_by(site, species) %>% 
+  tally() %>% # count individuals per species per site
+  full_join(., effort, by = 'site') %>% 
+  mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
+  select(site, species, n_adj) %>% 
+  spread(species, n_adj) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+
+sites <- matrix_temp$site # vector of just sites
+
+matrix_adj <- matrix_temp %>% 
+  select(-site) # remove site column for input into vegan
+
+matrix_adj <- as.matrix(matrix_adj)
+rownames(matrix_adj) <- sites
+
+
+
+# Create separate species matrices for each treatment
+
+matrix_unb <- matrix[1:9,] # species matrix for low severity
+matrix_mod <- matrix[19:27,] # species matrix for med severity
+matrix_high <- matrix[10:18,] # species matrix for high severity
+
+```
+
+###Shannon Diversity
+
+```{r calculate H, include=FALSE}
+
+# Calculate Shannon-Weaver diversity index (H) for each site
+
+H <- diversity(matrix_adj)
+
+# Make a dataframe with site, severity, and H
+diversity <- data_frame(sites, H) %>% 
+  full_join(., smamms, by = c('sites' = 'site')) %>% 
+  select(sites, severity, H) %>% 
+  rename(site = sites) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1)
+
+```
+
+
+```{r H data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+H_hist <- ggplot(diversity, aes(x = H)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+H_hist
+
+# Make qqplots for each treatment
+H_qq <- ggplot(diversity, aes(sample = H)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+H_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r H data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+variances <- diversity %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(H)
+  )
+
+variances
+
+# The variances aren't that different for each severity
+
+```
+
+
+```{r H ANOVA and post-hoc tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# ANOVA
+H_aov <- aov(H ~ severity, data = diversity)
+
+summary(H_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+H_ph <- TukeyHSD(H_aov)
+H_ph
+
+# p=0.005 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r H boxplot, echo=FALSE}
+
+# Summarize data with boxplots
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
+H_boxplot <- ggplot(diversity, aes(x = severity, y = H)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Shannon Diversity (H)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+H_boxplot
+
+# Calculate mean diversity for each treatment
+
+H_summary <- diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    H_mean = mean(H),
+    H_sd = sd(H)
+  )
+
+```
+
+**Shannon diversity (H) decreased across the fire severity gradient.** Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.1, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
+
+
+###Species Richness (rarefaction)
+
+```{r rarefaction, eval=FALSE, include=FALSE}
+
+# Calculate richness for each site using rarefaction
+
+raremax <- min(rowSums(matrix))
+raremax # minimum sample count = 5: rarefy using this value
+
+rare <- rarefy(matrix, sample = raremax)
+
+# Make a dataframe with site, severity, and H
+
+richness <- data_frame(sites, rare) %>% 
+  full_join(., smamms, by = c('sites' = 'site')) %>% 
+  select(sites, severity, rare) %>% 
+  rename(site = sites) %>% 
+  group_by(site) %>% 
+  filter(row_number()==1)
+
+```
+
+
+```{r data distribution, eval=FALSE, include=FALSE}
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+
+rare_hist <- ggplot(richness, aes(x = rare)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+rare_hist
+
+# Make qqplots for each treatment
+
+rare_qq <- ggplot(richness, aes(sample = rare)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+rare_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+```
+
+
+```{r data variance, eval=FALSE, include=FALSE}
+
+# Explore variance
+
+variances <- richness %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(rare)
+  )
+
+variances
+
+# The variances aren't that different for each severity
+
+```
+
+
+```{r ANOVA and post-hoc tests, eval=FALSE, include=FALSE}
+
+# Test for significant differences in means
+
+# ANOVA
+
+rare_aov <- aov(rare ~ severity, data = richness)
+
+summary(rare_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing
+
+# Tukey's HSD
+
+rare_ph <- TukeyHSD(rare_aov)
+rare_ph
+
+# p=0.003 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+
+```{r rarefaction curves, fig.height=4, echo=FALSE}
+
+# Rarefaction curves
+
+accum_unb <- specaccum(matrix_unb, # unburned 
+                       method = 'rarefaction', 
+                       permutations = 100)
+
+accum_mod <- specaccum(matrix_mod, # moderate severity
+                       method = 'rarefaction',
+                       permutations = 100)
+
+accum_high <- specaccum(matrix_high, # high severity
+                        method = 'rarefaction',
+                        permutations = 100)
+
+# Plot curves
+plot(accum_unb,
+     ci = 2, # 95% confidence interval
+     ci.type = 'polygon',
+     ci.col = rgb(red=0, green=1, blue=0, alpha=0.25),
+     ci.lty = 0,
+     lwd = 2,
+     col = 'darkgreen',
+     xlab = 'Sites',
+     ylab = 'Rarefaction')
+lines(accum_mod,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon',
+      ci.col = rgb(red=1, green=0.5, blue=0, alpha=0.25),
+      ci.lty = 0,
+      lwd = 2,
+      col = 'orange')
+lines(accum_high,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon',
+      ci.col = rgb(red=1, green=0, blue=0, alpha=0.25),
+      ci.lty = 0,
+      lwd = 2,
+      col = 'red'
+      )
+
+```
+
+**Species richness decreased across the fire severity gradient.** Individual-based rarefaction curves are plotted, with sites pooled for each severity. Differences in mean richness calculated from un-pooled rarefaction were significant (one-way ANOVA (2, 24) = 7.1, p < 0.01, n = 9 for each).
+
+- No way to account for sampling effort (uses raw species matrix with counts)
+
+
+```{r}
+
+# Vectors of species at each severity
+
+unb <- smamms %>% 
+  filter(severity == 'unb')
+
+mod <- smamms %>% 
+  filter(severity == 'mod')
+
+high <- smamms %>% 
+  filter(severity == 'high')
+
+unb_spp <- unique(unb$binomial)
+mod_spp <- unique(mod$binomial)
+high_spp <- unique(high$binomial)
+
+all_spp <- list(unb_spp, mod_spp, high_spp)
+
+venn.diagram(all_spp, filename = NULL)
+
+
+euler()
+
+
+```
+
+

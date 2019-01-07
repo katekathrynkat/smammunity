@@ -83,7 +83,7 @@ effort <- full_data %>%
   )) %>% 
   group_by(site) %>% 
   summarize(sprung = sum(usage)) %>% 
-  mutate(effort = (300 - sprung)/300) %>% 
+  mutate(effort =300 - sprung) %>% 
   select(site, effort)
 
 write.table(effort, "./data/effort.csv", quote=F, sep=",", row.names=F)
