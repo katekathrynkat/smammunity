@@ -1092,7 +1092,7 @@ MIXBUS,mod,2017-07-27,3,A8,S,230,TAQU,Neotamias quadrimaculatus,N. quadrimaculat
 MIXBUS,mod,2017-07-27,3,A10,S,247,TAQU,Neotamias quadrimaculatus,N. quadrimaculatus,Sciuridae,S,M,N,N,43,NA,NA,NA,NA
 MIXBUS,mod,2017-07-27,3,C7,L,309,SPBE,Otospermophilus beecheyi,O. beecheyi,Sciuridae,A,M,T,Y,525,NA,NA,NA,NA
 MIXBUS,mod,2017-07-27,3,C10,S,303,TAQU,Neotamias quadrimaculatus,N. quadrimaculatus,Sciuridae,S,F,N,N,46,NA,NA,right ear tagged,NA
-MIXBUS,mod,2017-07-27,3,D3,S,241,PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,S,M,N,Y,-16,46,NA,blind mouse from earlier,NA
+MIXBUS,mod,2017-07-27,3,D3,S,241,PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,S,M,N,Y,16,46,NA,blind mouse from earlier,NA
 MIXBUS,mod,2017-07-27,3,J3,S,499,PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,A,F,P,Y,18,72,66,NA,NA
 MIXBUS,mod,2017-07-27,3,J5,S,298,PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,A,M,T,N,20,77,71,NA,NA
 MIXBUS,mod,2017-07-27,3,J6,L,328,PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,S,M,N,Y,7,55,45,NA,NA

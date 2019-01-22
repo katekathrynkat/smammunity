@@ -20,9 +20,9 @@ library(secr)
 library(dunn.test)
 
 # Load necessary data
-smamms <- read_csv('smamms.csv')
-trap <- read_csv("trapmatrix.csv")
-meta <- read_csv('sites.csv')
+smamms <- read_csv('./data/full_data.csv') # one row per individuals, including SPRU/MISS traps
+trap <- read_csv('./secr/trapmatrix.csv')
+meta <- read_csv('./data/site_metadata.csv')
 
 ```
 
@@ -36,7 +36,7 @@ Multi-session model:
 - account for variable trapping effort: SPRU or non-target capture = 0.5 usage; MISS = 1 usage
 
 
-```{r create trap files}
+```{r create trap files, include=FALSE}
 
 # Data frame of sprung/missing traps and traps with non-PEMA captures
 sprung_PEMA <- smamms %>% 
@@ -79,9 +79,9 @@ sprungify <- function(x, site_code) {
 } 
 
 # Create CSV files for each session (i.e. site)
-for (i in meta$site.code) {
+for (i in meta$site) {
   sprung_all <- sprungify(sprung_PEMA, site_code = i)
-  write_csv(sprung_all, paste0('trapfile.', i, '.csv'), col_names = FALSE)
+  write_csv(sprung_all, paste0('./secr/trapfile.', i, '.csv'), col_names = FALSE)
 }
 
 ```
@@ -107,27 +107,27 @@ capt$detector <- as.factor(capt$detector)
 capt <- as.data.frame(capt)
 
 # Create CSV file for all sessions
-write_csv(capt,'smamms_capt.csv', col_names = FALSE)
+write_csv(capt,'./secr/smamms_capt.csv', col_names = FALSE)
 
 ```
 
 
-```{r create capture history object}
+```{r create capture history object, include=FALSE}
 
 # Create a vector of the trap files for all sessions
-trapfiles <- c('trapfile.GRNHOU.csv', 'trapfile.GRNMAS.csv', 'trapfile.GRNTUR.csv', 
-               'trapfile.GRNCAR.csv', 'trapfile.GRNKAN.csv', 'trapfile.GRNWOO.csv', 
-               'trapfile.GRNDAM.csv', 'trapfile.GRNQUA.csv', 'trapfile.GRNSNO.csv', 
-               'trapfile.MIXBUS.csv', 'trapfile.MIXMIX.csv', 'trapfile.MIXMOR.csv', 
-               'trapfile.MIXDP2.csv', 'trapfile.MIXMID.csv', 'trapfile.MIXRAV.csv', 
-               'trapfile.MIXBUT.csv', 'trapfile.MIXRIV.csv', 'trapfile.MIXWAT.csv', 
-               'trapfile.HICORN.csv', 'trapfile.HIDODD.csv', 'trapfile.HITEDD.csv', 
-               'trapfile.HICOWS.csv', 'trapfile.HISQUE.csv', 'trapfile.HIWALK.csv', 
-               'trapfile.HIBADR.csv', 'trapfile.HICAMP.csv', 'trapfile.HISHRU.csv')
+trapfiles <- c('./secr/trapfile.GRNHOU.csv', './secr/trapfile.GRNMAS.csv', './secr/trapfile.GRNTUR.csv', 
+               './secr/trapfile.GRNCAR.csv', './secr/trapfile.GRNKAN.csv', './secr/trapfile.GRNWOO.csv', 
+               './secr/trapfile.GRNDAM.csv', './secr/trapfile.GRNQUA.csv', './secr/trapfile.GRNSNO.csv', 
+               './secr/trapfile.MIXBUS.csv', './secr/trapfile.MIXMIX.csv', './secr/trapfile.MIXMOR.csv', 
+               './secr/trapfile.MIXDP2.csv', './secr/trapfile.MIXMID.csv', './secr/trapfile.MIXRAV.csv', 
+               './secr/trapfile.MIXBUT.csv', './secr/trapfile.MIXRIV.csv', './secr/trapfile.MIXWAT.csv', 
+               './secr/trapfile.HICORN.csv', './secr/trapfile.HIDODD.csv', './secr/trapfile.HITEDD.csv', 
+               './secr/trapfile.HICOWS.csv', './secr/trapfile.HISQUE.csv', './secr/trapfile.HIWALK.csv', 
+               './secr/trapfile.HIBADR.csv', './secr/trapfile.HICAMP.csv', './secr/trapfile.HISHRU.csv')
 trapfiles <- sort(trapfiles)
 
 # Use read.capthist to make a capture history object
-smammCH <- read.capthist('smamms_capt.csv', trapfiles,
+smammCH <- read.capthist('./secr/smamms_capt.csv', trapfiles,
                          detector = 'multi',
                          fmt = 'trapID',
                          noccasions = 3,
@@ -136,7 +136,7 @@ smammCH <- read.capthist('smamms_capt.csv', trapfiles,
 ```
 
 
-```{r summary}
+```{r summary, echo=FALSE}
 
 # Summaries
 summary(smammCH)
@@ -153,7 +153,7 @@ hist(m, xlab = "Movement m", main = "")
 ```
 
 
-```{r habitat masks}
+```{r habitat masks, eval=FALSE}
 
 # Quick estimate of sigma and buffer
 initialsigma <- gather(as_data_frame(RPSV(smammCH, CC = TRUE))) %>% 
@@ -175,7 +175,7 @@ NEED HABITAT MASK FOR EACH SESSION
 Remember to do retrospective buffer check: ESA plots
 Change grid cell size?
 
-```{r basic model}
+```{r basic model, eval=FALSE, include=FALSE}
 
 # Test a basic model
 
@@ -188,7 +188,7 @@ fit # D in the last table is the estimated density
 ```
 
 
-```{r comparing models}
+```{r comparing models, eval=FALSE}
 
 # Compare three models
 
@@ -210,8 +210,15 @@ AIC(fits) # formal model comparison: 1) HR, 2) EX, 3) HN
 
 par(mar = c(4,4,2,2))
 esa.plot(fits, max.buffer = 6 * initialsigma) # HR doesn't plateau as much as EX and HN --> estimates are more affected by buffer width
+```
+
+
+```{r exp model, eval=FALSE}
 
 # Use EX model (negative exponential)
+
+fit_EX <- secr.fit (smammCH, buffer = 6 * initialsigma, detectfn = 'EX', trace = FALSE)
+
 fit_EX
 
 param <- derived(fit_EX)
@@ -219,7 +226,7 @@ param$estimate[2] # estimated density
 
 ```
 
-```{r RUN FOR EACH SITE}
+```{r RUN FOR EACH SITE, eval=FALSE, include=FALSE}
 
 # Condensed code: run for each site separately to get density estimate
 
@@ -253,7 +260,7 @@ param$estimate[2]
 ```
 
 
-```{r data frame of densities}
+```{r data frame of densities, include=FALSE}
 
 densities <- c(0.6453089, 4.800268, 4.051649,
                5.908946, 3.812545, 8.822407,
@@ -288,7 +295,7 @@ density$severity <- factor(density$severity, levels = c('low', 'med', 'high'))
 ```
 
 
-```{r data distribution}
+```{r data distribution, eval=FALSE, include=FALSE}
 
 # Explore the data distribution
 
@@ -313,7 +320,7 @@ D_qq
 ```
 
 
-```{r data variance}
+```{r data variance, eval=FALSE, include=FALSE}
 
 # Explore variance
 variances <- density %>% 
@@ -330,7 +337,7 @@ variances
 ```
 
 
-```{r kruskal-wallis and post-hoc tests}
+```{r kruskal-wallis and post-hoc tests, eval=FALSE, include=FALSE}
 
 # Test for significant differences in means
 
@@ -353,7 +360,7 @@ dunn.test(density$D, density$severity,
 ```
 
 
-```{r boxplot}
+```{r boxplot, echo=FALSE}
 
 # Summarize data with boxplots
 colors <- c('darkgreen', 'orange', 'red')

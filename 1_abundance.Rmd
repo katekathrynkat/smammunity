@@ -53,7 +53,7 @@ species <- smamms %>%
 ```
 
 
-###Total abundance, summed across all species
+###Total abundance
 
 
 ```{r total abundance data frame, include=FALSE}
@@ -73,7 +73,21 @@ abundance <- smamms %>%
 
 ```
 
+```{r summary stats, eval=FALSE, include=FALSE}
+
+# Summary stats
+
+dim(smamms) # 545 unique individuals
+
+length(unique(smamms$species)) # 11 species
+
+```
+
+
 **Total raw abundance per species, summed across all sites.**
+
+- Although traps were primarily open at night, we can still include diurnal species (chipmunks, squirrels) in measures of relative abundance because traps were opened and closed at approximately the same time each day.
+- Flying squirrels spend a significant amount of time foraging on the ground, so their capture was not a fluke.
 
 ```{r abundance per species summary table, echo=FALSE}
 
@@ -99,7 +113,96 @@ summary_table
 
 ```
 
-###Proportional abundance per site
+
+```{r abundance across severities kruskal-wallis, eval=FALSE, include=FALSE}
+
+# Does the total abundance (summed across species) vary across the fire severity gradient?
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+
+n_hist <- ggplot(abundance, aes(x = n_adj)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+n_hist
+
+# Make qqplots for each treatment
+
+n_qq <- ggplot(abundance, aes(sample = n_adj)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+n_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look normal
+# n=9 for each severity, so cannot use CLT to justify normality
+
+
+
+# Explore variance
+
+variances <- abundance %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(n_adj)
+  )
+
+variances
+
+# Variances are WAY different (>4x)
+# Cannot satisfy assumptions of ANOVA
+# Test for significant differences in means
+
+
+
+# Kruskal Wallis
+
+n_kw <- kruskal.test(n_adj ~ severity, data = abundance)
+
+n_kw
+
+# p>0.05, so there are no sig differences in means
+
+```
+
+**Overall abundance of small mammals was consistent across fire severities.** The abundance of small mammals summed across all species and standardized by trapping effort did not differ significantly between fire severity treatments (Kruskal-Wallis $\chi^2$(2) = 5.3, p = 0.07, n = 9 for each).
+
+```{r abundance across severities boxplot, echo=FALSE}
+
+# Summarize data with boxplots
+
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
+n_boxplot <- ggplot(abundance, aes(x = severity, y = n_adj)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+n_boxplot 
+
+# Calculate mean diversity for each treatment
+
+n_summary <- abundance %>% 
+  group_by(severity) %>% 
+  summarise(
+    n_mean = mean(n_adj),
+    n_sd = sd(n_adj)
+  )
+
+```
+
+
+###Proportional abundance
+
+**Small mammal community composition varied across fire severities.** The proportion of abundance by species is shown for each site across the fire severity gradient.
 
 ```{r proportional abundance per site, fig.width=7, echo=FALSE}
 
@@ -142,7 +245,10 @@ prop_site_fig
 
 ```
 
-**Small mammal community varied across fire severities.** Community composition at each site across the fire severity gradient.
+
+**Small mammal community varied across fire severities.** Habitat preferences for the 11 species of mammals, standardized by trapping effort.
+
+- Paired figure with NMDS plot
 
 ```{r proportional abundance per species, echo=FALSE}
 
@@ -217,96 +323,6 @@ prop_species_fig <- ggplot(prop_species2,
 prop_species_fig
 
 ```
-
-**Small mammal community varied across fire severities.** Habitat preferences for the 11 species of mammals, standardized by trapping effort.
-
-- Paired figure with NMDS plot
-
-```{r abundance across severities kruskal-wallis, eval=FALSE, include=FALSE}
-
-# Does the total abundance (summed across species) vary across the fire severity gradient?
-
-# Explore the data distribution
-
-# Make histograms for each treatment
-
-n_hist <- ggplot(abundance, aes(x = n_adj)) +
-  geom_histogram() +
-  facet_wrap(~severity)
-
-n_hist
-
-# Make qqplots for each treatment
-
-n_qq <- ggplot(abundance, aes(sample = n_adj)) +
-  geom_qq() +
-  facet_wrap(~severity)
-
-n_qq
-
-# Histograms look a little funky because sample size is so small
-# qq-plots look normal
-# n=9 for each severity, so cannot use CLT to justify normality
-
-
-
-# Explore variance
-
-variances <- abundance %>% 
-  group_by(severity) %>% 
-  summarize(
-    variance = var(n_adj)
-  )
-
-variances
-
-# Variances are WAY different (>4x)
-# Cannot satisfy assumptions of ANOVA
-# Test for significant differences in means
-
-
-
-# Kruskal Wallis
-
-n_kw <- kruskal.test(n_adj ~ severity, data = abundance)
-
-n_kw
-
-# p>0.05, so there are no sig differences in means
-
-```
-
-
-```{r abundance across severities boxplot, echo=FALSE}
-
-# Summarize data with boxplots
-
-colors <- c('darkgreen', 'orange', 'red')
-xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
-
-n_boxplot <- ggplot(abundance, aes(x = severity, y = n_adj)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
-  labs(x = 'Fire Severity',
-       y = 'Total small mammal abundance') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs)
-
-n_boxplot
-
-# Calculate mean diversity for each treatment
-
-n_summary <- abundance %>% 
-  group_by(severity) %>% 
-  summarise(
-    n_mean = mean(n_adj),
-    n_sd = sd(n_adj)
-  )
-
-```
-
-**Overall abundance of small mammals was consistent across fire severities.** The abundance of small mammals summed across all species and standardized by trapping effort did not differ significantly between fire severity treatments (chi square (2) = 5.3, p = 0.07, n = 9 for each).
 
 
 ###*P. maniculatus* abundance
@@ -395,6 +411,7 @@ dunn.test(abundance_pema$n_adj_pema, abundance_pema$severity,
 
 ```
 
+***P. maniculatus* abundance increased in high severity sites.**  Abundance, standardized by trapping effort, differed significantly between the three fire severity treatments (Kruskal-Wallis $\chi^2$(2) = 9.2, p < 0.01, n = 9 for each). Post-hoc analysis by Dunn’s test with a Bonferroni correction showed that mean density in high severity sites (mean = 25.2 indv) differed significantly from both unburned (11.8 indv) and mixed severity sites (12.4 indv) (pairwise p = 0.01 and 0.02, respectively).
 
 ```{r PEMA abundance across severities boxplot, echo=FALSE}
 
@@ -424,4 +441,3 @@ n_pema_summary <- abundance_pema %>%
 
 ```
 
-***P. maniculatus* abundance increased in high severity sites.**  Abundance, standardized by trapping effort, differed significantly between the three fire severity treatments (Kruskal-Wallis test, (chi square (2) = 9.2, p < 0.01, n = 9 for each). Post-hoc analysis by Dunn’s test with a Bonferroni correction showed that mean density in high severity sites (mean = 25.2 indv) differed significantly from both unburned (11.8 indv) and mixed severity sites (12.4 indv) (pairwise p = 0.01 and 0.02, respectively).

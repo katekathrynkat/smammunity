@@ -1,0 +1,318 @@
+---
+title: "Habitat"
+author: "Kate"
+date: "January 7, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=5, fig.height=3, fig.align='center')
+```
+
+
+```{r packages and data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+library(vegan)
+
+# Load necessary data
+
+site_meta <- read_csv('./data/site_metadata.csv')
+
+cover_biomass <- read_csv('./data/veg/Cover biomass.csv')
+cwd_biomass_density <- read_csv('./data/veg/CWD biomass density.csv')
+shrub_biomass <- read_csv('./data/veg/NewShrubBiomass.csv')
+tree_biomass <- read_csv('./data/veg/Trees biomass.csv')
+
+cover <- read_csv('./data/veg/VEG Transect QCed Final_COVER_NameMatchFix.csv')
+cwd <- read_csv('./data/veg/VEG Transect QCed FINAL_CWD.csv')
+shrub <- read_csv('./data/veg/VEG Transect QCed Final_SHRUB_Nov2018.csv')
+tree <- read_csv('./data/veg/VEG Transect QCed_TREES.csv')
+
+```
+
+
+```{r data wrangling, include=FALSE}
+
+# Update classes
+
+site_meta <- site_meta %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+# Data frame containing only sites and severities
+
+sevs <- site_meta %>% 
+  select(site, severity)
+
+```
+
+
+
+```{r biomass}
+
+# Tree biomass
+# Measured as: total biomass of all live adult trees for both transects, divided by the transect area
+# kg/m^2
+
+tree_bm <- tree_biomass %>%
+  filter(State != 'D') %>% 
+  group_by(Site) %>% 
+  summarize(biomass = sum(Biomass)) %>% 
+  mutate(tree_bm = biomass/1500) # biomass per meter squared (total area = 1500 m2 = 2 transects X 50 m X 15 m)
+
+
+
+# Shrub biomass
+# Measured as: total biomass of all shrubs for both transects, divided by the transect area
+# kg/m^2
+
+shrub_bm <- shrub_biomass %>% 
+  filter(Shrub_or_Tree == 'Shrub') %>% 
+  group_by(Site) %>% 
+  summarize(biomass = sum(biomass)) %>% 
+  mutate(shrub_bm = biomass/500) # biomass per meter squared (total area = 1500 m2 = 2 transects X 50 m X 5 m)
+
+
+
+# Grass biomass
+# Measured as: total biomass of all grass for both transects, divided by the transect area
+# kg/m^2
+
+grass_bm <- cover_biomass %>% 
+  filter(Cover_type == 'Grass') %>% 
+  group_by(Site) %>% 
+  summarize(biomass = sum(Live.Weight_mean.Avg.Ratio.L)) %>%
+  mutate(grass_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
+
+
+
+
+# Forb biomass
+# Measured as: total biomass of all forbs for both transects, divided by the transect area
+# kg/m^2
+
+forb_bm <- cover_biomass %>% 
+  filter(Cover_type == 'Forbs' | Cover_type == 'Dominant forb') %>% 
+  group_by(Site) %>% 
+  summarize(biomass = sum(Live.Weight_mean.Avg.Ratio.L, na.rm = TRUE)) %>%
+  mutate(forb_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
+
+```
+
+
+```{r trees}
+
+# Tree density
+# Measured as: number of adult trees (live + dead) at both trasects, divided by the transect area
+# n/m^2
+
+tree_density <- tree %>% 
+  group_by(Site) %>% 
+  summarize(n = length(ID)) %>% 
+  mutate(tree_density = n/1500) # density per meter squared (total area = 1500 m2 = 2 transects X 50 m X 15 m)
+
+
+
+
+# Tree survival
+# Measured as: % live trees
+# %
+  
+tree_survival <- tree %>%
+  group_by(Site) %>% 
+  mutate(n = length(ID)) %>% 
+  filter(State != 'D') %>% 
+  group_by(Site, n) %>% 
+  summarize(live = length(ID)) %>% 
+  mutate(tree_survival = live/n) %>% 
+  full_join(., sevs, by = c('Site' = 'site')) %>% 
+  mutate(tree_survival = replace_na(tree_survival, 0))
+
+```
+
+
+```{r cover}
+
+# Vegetation cover
+# Measured as: total % vegetation cover (all species/life-forms) across all quadrats (both transects)
+# %
+
+veg_cover <- cover %>% 
+  filter(Type == 'Shrub' | Type == 'Tree' | Type == 'Dominant forb' | Type == 'Forbs' | Type == 'Grass') %>% # filter for vegetation only
+  group_by(Site, Transect, Meter) %>% 
+  summarize(quad_cover = sum(cover)) %>% # quad_cover is the total vegetation cover at each quadrat
+  group_by(Site) %>% 
+  summarize(veg_cover = mean(quad_cover))
+
+
+
+# Litter cover
+# Measured as: total % litter cover (soft loose litter, woody litter, soft rooted litter) across all quadrats (both transects)
+# %
+
+litter_cover <- cover %>% 
+  filter(Type == 'Soft loose litter' |
+           Type == 'Woody litter' |
+           Type == 'Soft rooted litter') %>% 
+  group_by(Site, Transect, Meter) %>% 
+  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% # quad_cover is the total vegetation cover at each quadrat
+  group_by(Site) %>% 
+  summarize(litter_cover = mean(quad_cover))
+
+
+```
+
+
+
+```{r CWD}
+
+# Coarse woody debris
+# Measured as: total volume (calculated from Waddell, 2002)
+# m^3/m^2
+
+cwd_volume <- cwd %>%
+  mutate(ind_volume = ((pi/8)*(`Diameter small_cm` + `Diameter large_cm`)*Length_m)/10000) %>% # volume of each piece of CWD in m^3
+  mutate(ind_vol_weighted = ind_volume/Length_m) %>% # volume of CWD, weighted by the length (to use in calculation of volume/area)
+  group_by(Site, Transect) %>% 
+  summarize(sum = (sum(ind_vol_weighted))) %>% # sum of ind_vol_weighted (m^3/m)
+  mutate(cwd_volume = (pi/2*50)*sum) %>% # volume density per transect (m^3/m^2)
+  group_by(Site) %>% 
+  summarize(cwd_volume = mean(cwd_volume, na.rm = TRUE)) %>%  # avg. volume density at each site (m^3/m^2)
+  mutate(cwd_volume = replace_na(cwd_volume, 0)) # sites with NAs had no CWD
+
+```
+
+
+```{r diversity}
+
+# Tree diversity
+# Diversity of all living adult trees
+# H
+
+# 1. Create a species matrix
+
+tree_spp <- tree %>%
+  filter(State != 'D', # filter out dead individuals
+         Species != 'Pinaceae') %>%  # filter out unknown conifers (3 total)
+  mutate(species = case_when( # combine yellow pines into one 'species'
+    Species == 'Pinus jeffreyi' | Species == 'Pinus ponderosa' | Species == 'Pinus sp.' ~ 'Pinus sp.',
+    TRUE ~ Species
+  )) %>% 
+  group_by(Site, species) %>% 
+  summarize(n = length(ID)) %>% 
+  spread(key = species, value = n) %>% 
+  ungroup() %>% 
+  replace(., is.na(.), 0)
+
+sites <- tree_spp$Site # vector of just sites
+
+tree_matrix <- tree_spp %>% 
+  select(-Site) # remove site column for input into vegan
+
+tree_matrix <- as.matrix(tree_matrix)
+rownames(tree_matrix) <- sites
+
+# 2. Calculate Shannon-Weaver diversity index (H) for each site
+
+tree_H <- diversity(tree_matrix)
+
+tree_diversity <- data_frame(sites, tree_H)
+
+
+
+# Shrub diversity
+# Diversity of all living shrubs
+# H
+
+# 1. Create a species matrix
+
+shrub_spp <- shrub %>% 
+  filter(Shrub_or_Tree == 'Shrub',
+         Species != 'Unknown') %>% 
+  group_by(Site, Species) %>% 
+  summarize(n = length(Species)) %>% 
+  spread(key = Species, value = n) %>% 
+  ungroup() %>% 
+  replace(., is.na(.), 0)
+
+sites <- shrub_spp$Site # vector of just sites
+
+shrub_matrix <- shrub_spp %>% 
+  select(-Site) # remove site column for input into vegan
+
+shrub_matrix <- as.matrix(shrub_matrix)
+rownames(shrub_matrix) <- sites
+
+# 2. Calculate Shannon-Weaver diversity index (H) for each site
+
+shrub_H <- diversity(shrub_matrix)
+
+shrub_diversity <- data_frame(sites, shrub_H)
+
+
+
+# Forb diversity
+# Diversity of dominant forbs (one per quadrat)
+# H
+
+# 1. Create a species matrix 
+
+forb_spp <- cover %>% 
+  filter(Type == 'Dominant forb',
+         Species != 'UNKNOWN') %>% 
+  group_by(Site, Transect, Meter) %>% 
+  filter(cover == max(cover), # only keep the highest cover forb in each quadrat
+         Avg_height_cm == max(Avg_height_cm), # only keep the tallest forb in each quadrat (by avg height)
+         Max_height_cm == max(Max_height_cm)) %>% # only keep the tallest forb in each quadrat (by max height)
+  group_by(Site, Species) %>% 
+  summarize(n = length(Species)) %>% 
+  spread(key = Species, value = n) %>% 
+  ungroup() %>% 
+  replace(., is.na(.), 0)
+
+sites <- forb_spp$Site # vector of just sites
+
+forb_matrix <- forb_spp %>% 
+  select(-Site) # remove site column for input into vegan
+
+forb_matrix <- as.matrix(forb_matrix)
+rownames(forb_matrix) <- sites
+
+# 2. Calculate Shannon-Weaver diversity index (H) for each site
+
+forb_H <- diversity(forb_matrix)
+
+forb_diversity <- data_frame(sites, forb_H)
+
+
+```
+
+
+```{r combined variables}
+
+# Data frame with combined veg variables
+
+veg <- full_join(tree_bm, shrub_bm, by = 'Site') %>% # tree_bm, shrub_bm
+  full_join(grass_bm, by = 'Site') %>% # grass_bm
+  full_join(forb_bm, by = 'Site') %>% # forb_bm
+  full_join(tree_density, by = 'Site') %>% # tree_density
+  full_join(tree_survival, by = 'Site') %>% # tree_survival
+  full_join(veg_cover, by = 'Site') %>% # veg_cover
+  full_join(litter_cover, by = 'Site') %>% # litter_cover
+  full_join(cwd_volume, by = 'Site') %>% # cwd_volume
+  full_join(tree_diversity, by = c('Site' = 'sites')) %>% # tree_H
+  full_join(shrub_diversity, by = c('Site' = 'sites')) %>% # shrub_H
+  full_join(forb_diversity, by = c('Site' = 'sites')) %>% # forb_H
+  select(Site, severity, tree_bm, shrub_bm, grass_bm, forb_bm, tree_density, tree_survival, veg_cover, litter_cover, cwd_volume, tree_H, shrub_H, forb_H) %>% 
+  rename(site = Site) %>% 
+  arrange(severity) %>%
+  replace(., is.na(.), 0)
+
+write_csv(veg,'veg.csv', col_names = TRUE)
+
+```
+

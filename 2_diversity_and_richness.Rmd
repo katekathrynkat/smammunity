@@ -19,7 +19,6 @@ knitr::opts_chunk$set(echo = TRUE, fig.width=5, fig.height=3, fig.align='center'
 library(tidyverse)
 library(vegan)
 library(VennDiagram)
-library(eulerr)
 
 # Load necessary data
 
@@ -171,6 +170,7 @@ H_ph
 
 ```
 
+**Shannon diversity (H) decreased across the fire severity gradient.** Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.1, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
 
 ```{r H boxplot, echo=FALSE}
 
@@ -200,8 +200,6 @@ H_summary <- diversity %>%
 
 ```
 
-**Shannon diversity (H) decreased across the fire severity gradient.** Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.1, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
-
 
 ###Species Richness (rarefaction)
 
@@ -214,7 +212,7 @@ raremax # minimum sample count = 5: rarefy using this value
 
 rare <- rarefy(matrix, sample = raremax)
 
-# Make a dataframe with site, severity, and H
+# Make a dataframe with site, severity, and richness
 
 richness <- data_frame(sites, rare) %>% 
   full_join(., smamms, by = c('sites' = 'site')) %>% 
@@ -293,6 +291,9 @@ rare_ph
 
 ```
 
+**Species richness decreased across the fire severity gradient.** Individual-based rarefaction curves are plotted, with sites pooled for each severity. Differences in mean richness calculated from un-pooled rarefaction were significant (one-way ANOVA (2, 24) = 7.1, p < 0.01, n = 9 for each).
+
+- No way to account for sampling effort (uses raw species matrix with counts)
 
 ```{r rarefaction curves, fig.height=4, echo=FALSE}
 
@@ -338,12 +339,12 @@ lines(accum_high,
 
 ```
 
-**Species richness decreased across the fire severity gradient.** Individual-based rarefaction curves are plotted, with sites pooled for each severity. Differences in mean richness calculated from un-pooled rarefaction were significant (one-way ANOVA (2, 24) = 7.1, p < 0.01, n = 9 for each).
+**Venn diagram of the number of species found in fire severity.** Nine species were found at unburned sites, eight at low-moderate severity sites, and seven at high severity sites.
 
-- No way to account for sampling effort (uses raw species matrix with counts)
+- Shared species: *P. maniculatus*, *N. quadrimaculatus*, *O. beecheyi*, *P. boylii*
+- Species unique to unburned sites: *G. sabrinus*, *R. megalotis*
 
-
-```{r}
+```{r species Venn diagram, fig.width=2, fig.height=2, echo=FALSE}
 
 # Vectors of species at each severity
 
@@ -356,17 +357,27 @@ mod <- smamms %>%
 high <- smamms %>% 
   filter(severity == 'high')
 
-unb_spp <- unique(unb$binomial)
-mod_spp <- unique(mod$binomial)
-high_spp <- unique(high$binomial)
+unb_spp <- unique(unb$species)
+mod_spp <- unique(mod$species)
+high_spp <- unique(high$species)
 
 all_spp <- list(unb_spp, mod_spp, high_spp)
+names(all_spp) <- c('Unburned', 'Low-Moderate', 'High')
 
-venn.diagram(all_spp, filename = NULL)
+# VennDiagram
 
-
-euler()
-
+spp_venn <- venn.diagram(all_spp,
+                         filename = NULL,
+                         lty = 'blank',
+                         cex = 1,
+                         fontfamily = 'sans',
+                         cat.pos = c(-18, 18, 180),
+                         cat.dist = c(0.07, 0.07, 0.05),
+                         cat.cex = 0.9,
+                         cat.fontfamily = 'sans',
+                         fill = c('darkgreen', 'orange', 'red'))
+grid.newpage()
+grid.draw(spp_venn)
 
 ```
 

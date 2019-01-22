@@ -317,7 +317,13 @@ dat1[dat1$capID==129,"species"] <- "PEMA" # PEMA based on cumulative tail length
 
 # Do the weights makes sense?
 
-dat1$weight <- dat1$total.wt-dat1$bag.wt
+dat1$weight <- dat1$total.wt-dat1$bag.wt # add new column for weight
+
+negative <- dat1 %>% 
+  filter(weight < 0) # one capture with a negative weight
+
+dat1[dat1$capID==1102,"weight"] <- 16 # assuming that total weight and bag weight were accidentally switched
+
 squirrel <- dat1[dat1$species=="SPBE",]
 squirrel <- squirrel[!is.na(squirrel$weight),]
 squirrel <- squirrel[squirrel$weight<350,]

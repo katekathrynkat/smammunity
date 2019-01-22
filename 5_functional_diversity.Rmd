@@ -27,12 +27,12 @@ library(npmv)
 # Load necessary data
 
 smamms <- read_csv('./data/unique_smamms.csv') # using dataset with one row per unique individual
+smamms_all <- read_csv('./data/full_data.csv') # using full dataset with one row per capture
 effort <- read_csv('./data/effort.csv')
 
 traits <- read_csv('./data/mammal_traits.csv') # trait data compiled from Audubon and Peterson field guides and Journal of Mammalogy species accounts
 pantheria_dat <- read_csv('./data/PanTHERIA.csv', na = '-999') # data from PanTHERIA: a species-level database of life history, ecology, and geography of extant and recently extinct mammals (2005 taxonomy)
 phylacine_dat <- read_csv('./data/phylacine.csv') # data from PHYLACINE 1.2: The Phylogenetic Atlas of Mammal Macroecology
-elton_dat <- read_csv('./data/EltonTraits.csv') # data from EltonTraits 1.0: Species‐level foraging attributes of the world's birds and mammals
 
 ```
 
@@ -84,11 +84,6 @@ pantheria_dat$genus <- gsub('Tamias', 'Neotamias', pantheria_dat$genus)
 
 phylacine_dat$binomial <- gsub('_', ' ', phylacine_dat$binomial)
 
-# Update taxonomy in EltonTraits dataset
-
-elton_dat$binomial <- gsub('Spermophilus', 'Otospermophilus', elton_dat$binomial)
-elton_dat$binomial <- gsub('Tamias', 'Neotamias', elton_dat$binomial)
-
 # Filter PanTHERIA data
 
 pantheria <- semi_join(pantheria_dat, species, by = 'binomial') %>% 
@@ -105,13 +100,62 @@ phylacine_diet <- semi_join(phylacine_dat, species, by = 'binomial') %>%
   filter(diet_percent != 0) %>% 
   mutate(diet_type = factor(diet_type, c('diet_plant', 'diet_invert', 'diet_vert')))
 
-# Filter EltonTraits data
 
-elton <- semi_join(elton_dat, species, by = 'binomial') %>% 
-  select(binomial, invert, scav, fruit, seed, plant_other, forage, nocturnal, crepuscular, diurnal, body_mass)
+
+# Trait data for export into CSV
+
+trait_csv <- full_join(pantheria, traits, by = 'binomial') %>% 
+  full_join(species, by = 'binomial') %>% 
+  select(species.y, body_mass, activity, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial)%>% 
+  rename(species = species.y) %>% 
+  arrange(species)
+
+write_csv(trait_csv,'trait.csv', col_names = TRUE)
+
 
 ```
 
+
+```{r biomass data wrangling, include=FALSE}
+
+# Data frame of the average mass for each unique individual
+
+capture_mass <- smamms_all %>% 
+  select(site, severity, indID, binomial, weight) %>% 
+  filter(!is.na(indID)) %>% # filter for captures only
+  group_by(indID, site, severity, binomial) %>% 
+  summarize(avg_mass = mean(weight, na.rm = TRUE)) %>% 
+  ungroup()
+
+# Data frame of the average mass for each species
+
+avg_mass <- capture_mass %>% 
+  group_by(binomial) %>% 
+  summarize(spp_avg = mean(avg_mass, na.rm = TRUE))
+
+# Combined data frame with the average mass for each unique individual, with NAs filled in with species averages
+
+smammmass <- full_join(capture_mass, avg_mass, by = 'binomial') %>% 
+  mutate(mass = case_when(
+    !is.na(avg_mass) ~ avg_mass,
+    is.na(avg_mass) ~ spp_avg
+  )) %>% 
+  select(site, severity, binomial, mass)
+
+# Data frame of total biomass at each site
+
+biomass <- smammmass %>% 
+  group_by(site, severity, binomial) %>% 
+  summarize(biomass = sum(mass)) %>% 
+  ungroup() %>% 
+  mutate(severity = factor(severity, c('unb', 'mod', 'high')))
+
+biomass_total <- biomass %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass_total = sum(biomass)) %>% # calculate total biomass at each site, summed across species
+  mutate(severity = factor(severity, c('unb', 'mod', 'high')))
+
+```
 
 
 ##Functional Diversity Indices 
@@ -120,8 +164,8 @@ elton <- semi_join(elton_dat, species, by = 'binomial') %>%
 
 # Data frame of functional traits
 
-trait <- full_join(pantheria, traits, by = 'binomial') %>% 
-  select(binomial, body_mass, activity, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial) %>% 
+trait <- full_join(avg_mass, traits, by = 'binomial') %>% 
+  select(binomial, spp_avg, activity, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial) %>% 
   arrange(binomial)
 
 spp <- trait$binomial # vector of just species
@@ -261,6 +305,9 @@ fdis_kw # p<0.05, so there is at least one sig difference in means
 **Functional diversity did not vary across the fire severity gradient.** Calculated values for each site are displayed for four indices of functional diversity: functional richness (FRic), functional divergence (FDiv), functional evenness (FEve), and functional dispersion (FDis). Means and standard deviations are shown for the three fire severity treatments: unburned (unb), low-moderate severity (mod), and high severity (high). Functional diversity indices were calculated using four ecologically relevant traits: diet, body size, activity time, and foraging mode. None of the differences in functional diversity between treatments were significant by ANOVA or Kruskal-Wallis ($\alpha$ = 0.5).
 
 - Results were the same when two aspects of foraging mode (foraging height and degree of fossoriality) were split and equally weighted with the other three traits.
+- Body size calculated as the mean mass from field measurements.
+- Considered including litter size/lifespan/age at sexual maturity/home range as a measure of extinction susceptibility/colonization ability, but couldn't find any precedent to do so in the literature and so left them out.
+- I don't account for phylogenetic correlation in any way.
 
 ```{r FD jitter plots, fig.width=6, fig.height=4, echo=FALSE, warning=FALSE}
 
@@ -303,22 +350,6 @@ grid.arrange(fric_jitter, fdiv_jitter, feve_jitter, fdis_jitter)
 
 
 ###Biomass
-
-```{r biomass data frames, include=FALSE}
-
-# Data frame of total biomass at each site
-
-biomass <- smamms_n %>%
-  full_join(pantheria, by = 'binomial') %>% # add PanTHERIA data
-  select(site, severity, binomial, cpue, body_mass) %>% 
-  mutate(biomass = cpue*body_mass) # calcuate total biomass per species, per site
-
-biomass_total <- biomass %>% 
-  group_by(site, severity) %>% 
-  summarize(biomass_total = sum(biomass)) # calculate total biomass at each site, summed across species
-
-```
-
 
 ```{r total biomass across severities kruskal-wallis, eval=FALSE, include=FALSE}
 
@@ -371,9 +402,9 @@ biomass_kw
 
 ```
 
-**Increase of total biomass was not significant across the fire severity gradient.** Mean total site biomass increased with fire severity, but the differences between treatments was not significant(Kruskal-Wallis test, (chi square (2) = 1.7, p = 0.4, n = 9 for each). Biomass data from PanTHERIA.
+**Increase of total biomass was not significant across the fire severity gradient.** Mean total site biomass increased with fire severity, but the differences between treatments was not significant (Kruskal-Wallis test, (chi square (2) = 2, p = 0.37, n = 9 for each).
 
-- Results are the same using PHYLACINE body size data
+- Results are the same using PHYLACINE and PanTHERIA body size data
 - Outliers are sites that had a lot of ground squirrels
 
 ```{r biomass boxplot, echo=FALSE}
@@ -455,22 +486,29 @@ total_spp_n <- smamms %>%
   summarize(n = length(binomial)) %>% 
   arrange(-n)
 
-# Data frame of abundance of each diet type by site and species, weighted for biomass
+# Data frame of abundance of each diet type by site and species, weighted by biomass from field data
 
-diet <- full_join(smamms_n, traits, by = 'binomial') %>% 
-  full_join(pantheria, by = 'binomial') %>% 
-  select(severity, site, binomial, cpue, seeds, fruits, veg, fungi, inverts, verts, body_mass) %>% 
+diet <- full_join(smammmass, traits, by = 'binomial') %>% 
+  select(severity, site, binomial, mass, seeds, fruits, veg, fungi, inverts, verts) %>% 
+  mutate(dfc = (10.5*(mass^0.507))/14, # daily food consumption, calulated as FMR/ME
+         seeds = seeds*dfc/100, # weight diet proportions by dfc for each indv.
+         fruits = fruits*dfc/100,
+         veg = veg*dfc/100,
+         fungi = fungi*dfc/100,
+         inverts = inverts*dfc/100,
+         verts = verts*dfc/100) %>% 
+  group_by(severity, site, binomial) %>% 
+  summarize(seeds = sum(seeds),
+            fruits = sum(fruits),
+            veg = sum(veg),
+            fungi = sum(fungi),
+            inverts = sum(inverts),
+            verts = sum(verts)) %>%
+  gather(key = diet_type, value = n, 4:9) %>% 
   ungroup() %>% 
   mutate(binomial = factor(binomial, total_spp_n$binomial),
-         biomass = cpue*body_mass, # calculate total biomass per species at each site
-         seeds = seeds*biomass/100, # weight diet proportions by biomass
-         fruits = fruits*biomass/100,
-         veg = veg*biomass/100,
-         fungi = fungi*biomass/100,
-         inverts = inverts*biomass/100,
-         verts = verts*biomass/100) %>% 
-  select(severity, site, binomial, seeds, fruits, veg, fungi, inverts, verts) %>% 
-  gather(key = diet_type, value = n, 4:9)
+         diet_type = factor(diet_type, c('veg', 'seeds', 'fruits', 'fungi', 'inverts', 'verts')),
+         severity = factor(severity, c ('unb','mod','high')))
 
 # Data frame summed by severity, species, and diet type
 
@@ -505,12 +543,10 @@ nonpartest(fruits|fungi|inverts|seeds|veg|verts ~ severity,
 
 ```
 
-**The total biomass consuming each diet item did not vary across the fire severity gradient.** Differences between treatments the total biomass (in grams, summed across species) consuming each type of diet item were not significant (nonparametric one-way ANOVA-type multivariate test F(3.2, 38.5) = 1.1, p = 0.4).
+**The community-wide daily food consumption (DFC) for each diet item did not vary across the fire severity gradient.** Differences in the community-wide DFC (in grams/day, summed across individuals of species at each site) between treatments for each diet item were not significant (nonparametric one-way ANOVA-type multivariate test F(4.2, 50.5) = 2.47, p = 0.054).
 
-- For each diet type (seeds, fruits, other vegetation, fungi, invertebrates, vertebrates), total contributing biomass was calculated for each site using the following formula: $\sum_{i=1}^n biomass_i * proportion_i$
-    - *biomass~i~* = total biomass (g) for each species *i* at each site
-    - *proportion~i~* = proportion (%) of each diet type consumed by each species *i* (determined from field guides and species accounts)
-- I incorporated biomass in order to sum across species, since larger animals presumable eat more than smaller animals (and I was interested in the differences in total food resources consumed)
+- DFC scales allometrically with body mass and is equal to FMR/ME
+- Biomass was calculated from field measurements
 
 ```{r diet jitter plots, fig.height=4, fig.width=6, echo=FALSE}
 
@@ -518,24 +554,22 @@ nonpartest(fruits|fungi|inverts|seeds|veg|verts ~ severity,
 
 diet_jitter <- ggline(diet_site, x = 'severity', y = 'total',
                       add = c('mean_se', 'jitter'),
-                      facet.by = 'diet_type', scale = 'free')
+                      facet.by = 'diet_type', scale = 'free') +
+  labs(x = 'Severity',
+       y = 'DFC')
 
 diet_jitter
 
 ```
 
 
-**Mosaic plot of community diet across fire severities.** Proportion of total biomass (summed across sites) that consumed each diet type by species for each severity. Although the overall proportion of biomass consuming each diet type remained consistent between treatments, the species contributing to the biomass consuming each diet type varied.
+**Mosaic plot of community diet across fire severities.** Proportion of total daily food consumption (summed across sites) of each type of diet item by species for each severity. Although the overall proportion of DFC for each type of diet item remained consistent between treatments, the species consuming each diet item varied.
 
-- Total biomass was calculated similarly to above, but summed by severity instead of species: for each severity, total contributing biomass was calculated for each diet type and species using the following formula: $\sum_{i=1}^n biomass_i * proportion$
-    - *biomass~i~* = total biomass (g) for each species at each site *i*
-    - *proportion* = proportion (%) of each diet type consumed by each species (determined from field guides and species accounts)
+- DFC was calculated similarly to above
 
-```{r diet mosaic plot, fig.width=8, fig.height=4, echo=FALSE}
+```{r diet mosaic plot, fig.width=7, fig.height=3.5, echo=FALSE}
 
 # Mosaic plot
-
-xlabs <- c('Vertebrates', 'Vegetation', 'Seeds', 'Invertebrates', 'Fungi', 'Fruits')
 
 diet_col <- ggplot(data = diet_sev) +
   geom_mosaic(aes(weight = total, x = product(diet_type), fill = binomial),
@@ -544,14 +578,14 @@ diet_col <- ggplot(data = diet_sev) +
               offset = 0) + 
   scale_y_productlist(breaks=c(0, 0.25, 0.50, 0.75, 1),
                       labels=c('0', '25', '50', '75', '100')) +
-  labs(x = 'Biomass proportion by diet type (%)',
-       y = 'Biomass proportion by species (%)',
+  labs(x = 'DFC proportion by diet item (%)',
+       y = 'DFC proportion by species (%)',
        fill = 'Species') +
   theme_minimal() +
   theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()) +
-  coord_flip() +
-  facet_grid(rows = vars(severity),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1)) +
+  facet_grid(cols = vars(severity),
              scale = 'free',
              labeller = as_labeller(c('unb' = 'Unburned',
                                       'mod' = 'Moderate',
@@ -625,6 +659,8 @@ foss_col
 ###Activity time
 
 **Abundance by activity time across fire severity treatments.** All severities were dominated by nocturnal species.
+
+- This may be misleading because traps were primarily open at night.
 
 ```{r activity time col graph, echo=FALSE}
 
