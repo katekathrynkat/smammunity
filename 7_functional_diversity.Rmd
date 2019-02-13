@@ -1,0 +1,872 @@
+---
+title: "Functional Diversity"
+author: "Kate"
+date: "December 16, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=5, fig.height=3, fig.align='center')
+```
+
+
+```{r packages & data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+library(ggmosaic)
+library(FD)
+library(dunn.test)
+library(ggpubr)
+library(gridExtra)
+library(npmv)
+
+select <- dplyr::select
+
+# Load necessary data
+
+smamms <- read_csv('./data/unique_smamms.csv') # using dataset with one row per unique individual
+smamms_all <- read_csv('./data/full_data.csv') # using full dataset with one row per capture
+effort <- read_csv('./data/effort.csv')
+
+traits <- read_csv('./data/mammal_traits.csv') # trait data compiled from Audubon and Peterson field guides and Journal of Mammalogy species accounts
+pantheria_dat <- read_csv('./data/PanTHERIA.csv', na = '-999') # data from PanTHERIA: a species-level database of life history, ecology, and geography of extant and recently extinct mammals (2005 taxonomy)
+phylacine_dat <- read_csv('./data/phylacine.csv') # data from PHYLACINE 1.2: The Phylogenetic Atlas of Mammal Macroecology
+
+```
+
+
+```{r data wrangling, include=FALSE}
+
+#### King Fire abundance data ####
+
+# Update classes
+
+smamms <- smamms %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+# Data frame containing only sites and severities
+
+sevs <- smamms %>% 
+  group_by(site) %>% 
+  filter(row_number()==1) %>% 
+  select(site, severity)
+
+# Data frame containing only species information
+
+species <- smamms %>% 
+  group_by(species) %>% 
+  filter(row_number()==1) %>% 
+  select(species, family, binomial, binomial_short)
+
+# Data frame of total abundance per species by site, adjusted for sampling effort
+
+smamms_n <- smamms %>% 
+  group_by(binomial, site) %>% 
+  summarize(n = length(site)) %>% # calculate total abundance per species, per site
+  full_join(effort, by = 'site') %>% 
+  mutate(cpue = n/effort * 300) %>% # adjust for trapping effort
+  full_join(sevs, by = 'site')
+
+
+
+#### Mammal trait data ####
+
+# Update taxonomy in PanTHERIA dataset
+
+pantheria_dat$binomial <- gsub('Spermophilus', 'Otospermophilus', pantheria_dat$binomial)
+pantheria_dat$genus <- gsub('Spermophilus', 'Otospermophilus', pantheria_dat$genus)
+pantheria_dat$binomial <- gsub('Tamias', 'Neotamias', pantheria_dat$binomial)
+pantheria_dat$genus <- gsub('Tamias', 'Neotamias', pantheria_dat$genus)
+
+# Update binomials in PHYLACINE dataset
+
+phylacine_dat$binomial <- gsub('_', ' ', phylacine_dat$binomial)
+
+# Filter PanTHERIA data
+
+pantheria <- semi_join(pantheria_dat, species, by = 'binomial') %>% 
+  select(family, genus, species, binomial, activity_cycle, body_mass, body_length, diet_breadth, gestation, habitat_breadth, home_range, home_range_indv, litter_size, annual_litters, max_longevity, pop_density, age_sexualmaturity, trophic_level)
+
+# Filter PHYLACINE data
+
+phylacine_mass <- semi_join(phylacine_dat, species, by = 'binomial') %>% 
+  select(family, genus, species, binomial, mass)
+
+phylacine_diet <- semi_join(phylacine_dat, species, by = 'binomial') %>% 
+  select(family, genus, species, binomial, diet_plant, diet_invert, diet_vert) %>% 
+  gather(key = 'diet_type', value = 'diet_percent', 5:7) %>% 
+  filter(diet_percent != 0) %>% 
+  mutate(diet_type = factor(diet_type, c('diet_plant', 'diet_invert', 'diet_vert')))
+
+
+
+# Trait data for export into CSV
+
+trait_csv <- full_join(pantheria, traits, by = 'binomial') %>% 
+  full_join(species, by = 'binomial') %>% 
+  select(species.y, body_mass, activity, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial)%>% 
+  rename(species = species.y) %>% 
+  arrange(species)
+
+write_csv(trait_csv,'./data/trait.csv', col_names = TRUE)
+
+
+```
+
+
+```{r biomass data wrangling, include=FALSE}
+
+# Data frame of the average mass for each unique individual
+
+capture_mass <- smamms_all %>% 
+  select(site, severity, indID, binomial, weight) %>% 
+  filter(!is.na(indID)) %>% # filter for captures only
+  group_by(indID, site, severity, binomial) %>% 
+  summarize(avg_mass = mean(weight, na.rm = TRUE)) %>% 
+  ungroup()
+
+# Data frame of the average mass for each species
+
+avg_mass <- capture_mass %>% 
+  group_by(binomial) %>% 
+  summarize(spp_avg = mean(avg_mass, na.rm = TRUE))
+
+# Combined data frame with the average mass for each unique individual, with NAs filled in with species averages
+
+smammmass <- full_join(capture_mass, avg_mass, by = 'binomial') %>% 
+  mutate(mass = case_when(
+    !is.na(avg_mass) ~ avg_mass,
+    is.na(avg_mass) ~ spp_avg
+  )) %>% 
+  select(site, severity, binomial, mass)
+
+# Data frame of total biomass at each site
+
+biomass <- smammmass %>% 
+  group_by(site, severity, binomial) %>% 
+  summarize(biomass = sum(mass)) %>% 
+  ungroup() %>% 
+  mutate(severity = factor(severity, c('unb', 'mod', 'high')))
+
+biomass_total <- biomass %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass_total = sum(biomass)) %>% # calculate total biomass at each site, summed across species
+  mutate(severity = factor(severity, c('unb', 'mod', 'high')))
+
+```
+
+
+##Functional Diversity Indices 
+
+```{r FD indices, include=FALSE}
+
+# Data frame of functional traits
+
+trait <- full_join(avg_mass, traits, by = 'binomial') %>% 
+  select(binomial, spp_avg, activity, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial) %>% 
+  arrange(binomial)
+
+spp <- trait$binomial # vector of just species
+
+trait <- trait %>% 
+  select(-binomial) # remove species column
+rownames(trait) <- spp
+
+# Matrix of abundances by species
+
+abun_temp <- smamms_n %>% 
+  select(site, binomial, cpue) %>% 
+  spread(binomial, cpue) %>%
+  ungroup() %>% 
+  replace(., is.na(.), 0) # replace NAs with 0
+
+sites <- abun_temp$site # vector of just sites
+
+abun <- abun_temp %>% 
+  select(-site) # remove site column
+
+abun <- as.matrix(abun)
+rownames(abun) <- sites
+
+
+
+# Calculate functional diversity using FD package
+
+weight <- c(1, # weight for body mass
+            1, # weight for activity
+            0.167, 0.167, 0.167, 0.167, 0.167, 0.167, # weight for diet categories
+            0.5, 0.5) # weight for foraging mode attributes
+
+smamm_fd <- dbFD(trait, abun, weight)
+
+smamm_fd$FRic # functional richness
+smamm_fd$FDiv # functional divergence
+smamm_fd$FEve # functional evenness
+smamm_fd$FDis # functional dispersion
+
+# Data frame with values for the four indices at each site
+
+indices <- data_frame(sites, smamm_fd$FRic, smamm_fd$FDiv, smamm_fd$FEve, smamm_fd$FDis) %>% 
+  rename(site = sites,
+         FRic = 'smamm_fd$FRic',
+         FDiv = 'smamm_fd$FDiv',
+         FEve = 'smamm_fd$FEve',
+         FDis = 'smamm_fd$FDis') %>% 
+  full_join(sevs, by = 'site')
+
+# Checking Gower's dissimilarity matrix
+
+trait2 <- as.data.frame(trait)
+
+gowdis(trait2, weight)
+
+```
+
+
+```{r FD by severity, eval=FALSE, include=FALSE}
+
+# Does functional diversity vary across a fire severity gradient?
+
+
+
+#### Explore the data distribution ####
+
+# Make histograms for each treatment
+fric_hist <- ggplot(indices, aes(x = FRic)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fric_hist
+
+fdiv_hist <- ggplot(indices, aes(x = FDiv)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fdiv_hist
+
+feve_hist <- ggplot(indices, aes(x = FEve)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+feve_hist
+
+fdis_hist <- ggplot(indices, aes(x = FDis)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fdis_hist
+
+# Histograms are weird
+# n=9 for each severity, so cannot use CLT to justify normality
+
+
+
+# Explore variance
+variances <- indices %>% 
+  group_by(severity) %>% 
+  summarize(
+    var_fric = var(FRic, na.rm = TRUE),
+    var_fdiv = var(FDiv, na.rm = TRUE),
+    var_feve = var(FEve, na.rm = TRUE),
+    var_fdis = var(FDis)
+  )
+
+variances
+
+# Variances for FRic and FDis are too different (>4x) to satisfy assumptions of ANOVA
+# Variances for FDiv and FEve are close enough for ANOVA
+
+
+
+#### Test for significant differences in means ####
+
+# FRic: Kruskal Wallis and post-hoc pairwise testing (Dunn's test)
+
+fric_kw <- kruskal.test(FRic ~ severity, data = indices)
+
+fric_kw # p>0.05, so there no sig difference in means
+
+# FDiv: ANOVA
+
+fdiv_aov <- aov(FDiv ~ severity, data = indices)
+
+summary(fdiv_aov) # p>0.05 so there are not significant differences in means
+
+# FEve: ANOVA
+
+feve_aov <- aov(FEve ~ severity, data = indices)
+
+summary(feve_aov) # p>0.05 so there are not significant differences in means
+
+# FDis: Kruskal-Wallis
+
+fdis_kw <- kruskal.test(FDis ~ severity, data = indices)
+
+fdis_kw # p<0.05, so there is at least one sig difference in means
+
+```
+
+**Functional diversity did not vary across the fire severity gradient.** Calculated values for each site are displayed for four indices of functional diversity: functional richness (FRic), functional divergence (FDiv), functional evenness (FEve), and functional dispersion (FDis). Means and standard deviations are shown for the three fire severity treatments: unburned (unb), low-moderate severity (mod), and high severity (high). Functional diversity indices were calculated using four ecologically relevant traits: diet, body size, activity time, and foraging mode. None of the differences in functional diversity between treatments were significant by ANOVA or Kruskal-Wallis ($\alpha$ = 0.5).
+
+- Results were the same when two aspects of foraging mode (foraging height and degree of fossoriality) were split and equally weighted with the other three traits.
+- Body size calculated as the mean mass from field measurements.
+- Considered including litter size/lifespan/age at sexual maturity/home range as a measure of extinction susceptibility/colonization ability, but couldn't find any precedent to do so in the literature and so left them out.
+- I don't account for phylogenetic correlation in any way.
+
+INDEX CALCULATION
+
+1. Uses Gower dissimilarity matrix (can use ordered, categorical, and numerical variables)
+    - integrates variable weights
+2. Conducts PCA on the distance matrix and uses the resulting PC axes as 'traits' to compute FD indices
+3. Calculates indices based on equations in (Laliberte & Legendre, 2010)
+
+```{r FD jitter plots, fig.width=6, fig.height=4, echo=FALSE, warning=FALSE}
+
+# Jitter plots of the mean of FRic across severities
+
+fric_jitter <- ggline(indices, x = 'severity', y = 'FRic',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FRic')
+
+# Jitter plots of the mean of FDiv across severities
+
+fdiv_jitter <- ggline(indices, x = 'severity', y = 'FDiv',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FDiv')
+
+# Jitter plots of the mean of FEve across severities
+
+feve_jitter <- ggline(indices, x = 'severity', y = 'FEve',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FEve')
+
+# Jitter plots of the mean of FDis across severities
+
+fdis_jitter <- ggline(indices, x = 'severity', y = 'FDis',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FDis')
+
+# All four plots
+
+grid.arrange(fric_jitter, fdiv_jitter, feve_jitter, fdis_jitter)
+
+```
+
+
+##Individual Components of Functional Diversity
+
+
+###Biomass
+
+```{r total biomass across severities kruskal-wallis, eval=FALSE, include=FALSE}
+
+# Does the total biomass at each site vary across a fire severity gradient?
+
+# Explore the data distribution
+
+# Make histograms for each treatment
+biomass_hist <- ggplot(biomass_total, aes(x = biomass_total)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+biomass_hist
+
+# Make qqplots for each treatment
+biomass_qq <- ggplot(biomass_total, aes(sample = biomass_total)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+biomass_qq
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look weird and swoopy, pluass the mod distribution is really disjunct
+# n=9 for each severity, so cannot use CLT to justify normality
+
+
+
+# Explore variance
+variances <- biomass_total %>% 
+  group_by(severity) %>% 
+  summarize(
+    variance = var(biomass_total)
+  )
+
+variances
+
+# Variances are WAY different (>4x)
+# Cannot satisfy assumptions of ANOVA
+
+
+
+# Test for significant differences in means
+
+# Kruskal Wallis
+biomass_kw <- kruskal.test(biomass_total ~ severity, data = biomass_total)
+
+biomass_kw
+
+# p>0.05, so there is no sig difference in means
+
+```
+
+**Increase of total biomass was not significant across the fire severity gradient.** Mean total site biomass increased with fire severity, but the differences between treatments was not significant (Kruskal-Wallis test, (chi square (2) = 2, p = 0.37, n = 9 for each).
+
+- Results are the same using PHYLACINE and PanTHERIA body size data
+- Outliers are sites that had a lot of ground squirrels
+
+```{r biomass boxplot, echo=FALSE}
+
+# Box and whisker plot of the mean of total site biomass across severities
+
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity')
+
+total_biomass_box <- ggplot(biomass_total,
+                            aes(x = severity, y = biomass_total)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Total biomass (g)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+total_biomass_box
+
+```
+
+**Total biomass by species across the fire severity gradient.** Total biomass summed across sites for each severity, with the proportion contributed by each species. Increases in biomass were mainly driven by *P. maniculatus* and *O. beecheyi*.
+
+- Strange that even though the mean biomass did not change between severities, the total biomass was much higher for mod and high severities (skewed by ground squirrel outliers)
+
+```{r biomass column graph, fig.width=6, fig.height=4, echo=FALSE}
+
+# Column graph of biomass by species for each fire severity
+
+biomass_col <- ggplot(biomass, aes(x = severity, y = biomass,
+                                   fill = binomial)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Biomass (g)',
+       fill = 'Species')
+
+biomass_col
+
+```
+
+
+###Diet
+
+**Abundance by feeding guild across the fire severity gradient.** All three treatments were dominated by generalist species.
+
+- Categorical feeding guild (herbivore, omnivore, carnivore, insectivore) was not used in functional diversity calculations
+ 
+```{r feeding guild col graph, echo=FALSE}
+
+# Column graph of feeding guild by fire severity
+
+guild <- smamms_n %>% 
+  full_join(traits, by = 'binomial') %>% 
+  group_by(severity, guild) %>% 
+  summarize(n = sum(cpue))
+
+guild_col <- ggplot(guild, aes(x = severity, y = n,
+                               fill = guild)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = 'Fire severity',
+       y = 'Number of individuals',
+       fill = 'Feeding guild')
+
+guild_col
+
+```
+
+
+```{r diet data frame, include=FALSE}
+
+# Data frame of TOTAL abundance per species (summed across sites): use to order binomial factors
+
+total_spp_n <- smamms %>% 
+  group_by(binomial) %>% 
+  summarize(n = length(binomial)) %>% 
+  arrange(-n)
+
+# Data frame of abundance of each diet type by site and species, weighted by biomass from field data
+
+diet <- full_join(smammmass, traits, by = 'binomial') %>% 
+  select(severity, site, binomial, mass, seeds, fruits, veg, fungi, inverts, verts) %>% 
+  mutate(dfc = (10.5*(mass^0.507))/14, # daily food consumption, calulated as FMR/ME
+         seeds = seeds*dfc/100, # weight diet proportions by dfc for each indv.
+         fruits = fruits*dfc/100,
+         veg = veg*dfc/100,
+         fungi = fungi*dfc/100,
+         inverts = inverts*dfc/100,
+         verts = verts*dfc/100) %>% 
+  group_by(severity, site, binomial) %>% 
+  summarize(seeds = sum(seeds),
+            fruits = sum(fruits),
+            veg = sum(veg),
+            fungi = sum(fungi),
+            inverts = sum(inverts),
+            verts = sum(verts)) %>%
+  gather(key = diet_type, value = n, 4:9) %>% 
+  ungroup() %>% 
+  mutate(binomial = factor(binomial, total_spp_n$binomial),
+         diet_type = factor(diet_type, c('veg', 'seeds', 'fruits', 'fungi', 'inverts', 'verts')),
+         severity = factor(severity, c ('unb','mod','high')))
+
+# Data frame summed by severity, species, and diet type
+
+diet_sev <- diet %>% 
+  group_by(severity, binomial, diet_type) %>% 
+  summarize(total = sum(n))
+
+# Data frame summed by site and diet type
+
+diet_site <- diet %>%
+  group_by(site, diet_type, severity) %>% 
+  summarize(total = sum(n))
+
+```
+
+
+```{r diet npmv, eval=FALSE, include=FALSE}
+
+# Data frame summed by site and diet type, wide format
+
+diet_spread <- diet_site %>% 
+  spread(key = diet_type, value = total)
+  
+# Non-parametric comparison of multivariate samples (package npmv)
+# Non-parametric equivalent of MANOVA
+
+nonpartest(fruits|fungi|inverts|seeds|veg|verts ~ severity,
+           diet_spread,
+           plots = FALSE)
+
+# p>0.05 so there is no difference between groups
+
+```
+
+**The community-wide daily food consumption (DFC) for each diet item did not vary across the fire severity gradient.** Differences in the community-wide DFC (in grams/day, summed across individuals of species at each site) between treatments for each diet item were not significant (nonparametric one-way ANOVA-type multivariate test F(4.2, 50.5) = 2.47, p = 0.054).
+
+- DFC scales allometrically with body mass and is equal to FMR/ME
+- Biomass was calculated from field measurements
+
+```{r diet jitter plots, fig.height=4, fig.width=6, echo=FALSE}
+
+# Jitter plots
+
+diet_jitter <- ggline(diet_site, x = 'severity', y = 'total',
+                      add = c('mean_se', 'jitter'),
+                      facet.by = 'diet_type', scale = 'free') +
+  labs(x = 'Severity',
+       y = 'DFC')
+
+diet_jitter
+
+```
+
+
+**Mosaic plot of community diet across fire severities.** Proportion of total daily food consumption (summed across sites) of each type of diet item by species for each severity. Although the overall proportion of DFC for each type of diet item remained consistent between treatments, the species consuming each diet item varied.
+
+- DFC was calculated similarly to above
+
+```{r diet mosaic plot, fig.width=7, fig.height=3.5, echo=FALSE}
+
+# Mosaic plot
+
+diet_col <- ggplot(data = diet_sev) +
+  geom_mosaic(aes(weight = total, x = product(diet_type), fill = binomial),
+              color = 'black',
+              lwd = 0.5,
+              offset = 0) + 
+  scale_y_productlist(breaks=c(0, 0.25, 0.50, 0.75, 1),
+                      labels=c('0', '25', '50', '75', '100')) +
+  labs(x = 'DFC proportion by diet item (%)',
+       y = 'DFC proportion by species (%)',
+       fill = 'Species') +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1)) +
+  facet_grid(cols = vars(severity),
+             scale = 'free',
+             labeller = as_labeller(c('unb' = 'Unburned',
+                                      'mod' = 'Low-Moderate',
+                                      'high' = 'High')))
+
+diet_col
+
+```
+
+
+###Foraging mode
+
+**Abundance by foraging height across fire severity treatments.** All severities were dominated by scansorial species.
+
+- 0 = fully terrestrial
+- 1 = scansorial - lower canopy
+- 2 = scansorial - upper canopy
+- 3 = fully arboreal (no representatives in our data)
+
+```{r foraging height col graph, echo=FALSE}
+
+# Column graph of foraging height by fire severity
+
+height <- smamms_n %>% 
+  full_join(traits, by = 'binomial') %>% 
+  group_by(severity, arboreal) %>% 
+  summarize(n = sum(cpue))
+
+height_col <- ggplot(height, aes(x = severity, y = n,
+                                 fill = arboreal)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = 'Fire severity',
+       y = 'Number of individuals',
+       fill = 'Foraging Height')
+
+height_col
+
+```
+
+**Abundance by degree of fossoriality across fire severity treatments.** All severities were dominated by non-fossorial species.
+
+- 0 = non-fossorial
+- 1 = semi-fossorial (sometimes forages underground)
+- 2 = semi-fossorial (sometimes forages and caches food underground)
+- 3 = fully fossorial (no representatives in our data)
+
+```{r fossoriality col graph, echo=FALSE}
+
+# Column graph of degree of fossoriality by fire severity
+
+foss <- smamms_n %>% 
+  full_join(traits, by = 'binomial') %>% 
+  group_by(severity, fossorial) %>% 
+  summarize(n = sum(cpue))
+
+foss_col <- ggplot(foss, aes(x = severity, y = n,
+                             fill = fossorial)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = 'Fire severity',
+       y = 'Number of individuals',
+       fill = 'Degree of Fossoriality')
+
+foss_col
+
+```
+
+
+
+###Activity time
+
+**Abundance by activity time across fire severity treatments.** All severities were dominated by nocturnal species.
+
+- This may be misleading because traps were primarily open at night.
+
+```{r activity time col graph, echo=FALSE}
+
+# Column graph of activity time by fire severity
+
+activity <- smamms_n %>% 
+  full_join(traits, by = 'binomial') %>% 
+  group_by(severity, activity) %>% 
+  summarize(n = sum(cpue))
+
+activity_col <- ggplot(activity, aes(x = severity, y = n,
+                                     fill = activity)) +
+  geom_col() +
+  theme_minimal() +
+  labs(x = 'Fire severity',
+       y = 'Number of individuals',
+       fill = 'Activity Time')
+
+activity_col
+
+```
+
+
+##Updated FD
+
+###Weediness
+
+Using data from PanTHERIA: home range, litter size, annual litters, longevity
+
+##Functional Diversity Indices 
+
+```{r FD indices 2, include=FALSE}
+
+# Data frame of functional traits
+
+trait2 <- full_join(avg_mass, traits, by = 'binomial') %>% 
+  full_join(pantheria, by = 'binomial') %>% 
+  select(binomial, spp_avg, seeds, fruits, veg, fungi, inverts, verts, arboreal, fossorial, annual_litters) %>% 
+  arrange(binomial)
+
+spp <- trait2$binomial # vector of just species
+
+trait2 <- trait2 %>% 
+  select(-binomial) # remove species column
+rownames(trait2) <- spp
+
+# Calculate functional diversity using FD package
+
+weight <- c(1, # weight for body mass
+            0.167, 0.167, 0.167, 0.167, 0.167, 0.167, # weight for diet categories
+            0.5, 0.5, # weight for foraging mode attributes
+            1) # weight for weediness attributes
+
+smamm_fd2 <- dbFD(trait2, abun, weight)
+
+smamm_fd2$FRic # functional richness
+smamm_fd2$FDiv # functional divergence
+smamm_fd2$FEve # functional evenness
+smamm_fd2$FDis # functional dispersion
+
+# Data frame with values for the four indices at each site
+
+indices2 <- data_frame(sites, smamm_fd2$FRic, smamm_fd2$FDiv, smamm_fd2$FEve, smamm_fd2$FDis) %>% 
+  rename(site = sites,
+         FRic = 'smamm_fd2$FRic',
+         FDiv = 'smamm_fd2$FDiv',
+         FEve = 'smamm_fd2$FEve',
+         FDis = 'smamm_fd2$FDis') %>% 
+  full_join(sevs, by = 'site')
+
+```
+
+
+```{r FD by severity 2, eval=FALSE, include=FALSE}
+
+# Does functional diversity vary across a fire severity gradient?
+
+
+
+#### Explore the data distribution ####
+
+# Make histograms for each treatment
+fric_hist <- ggplot(indices2, aes(x = FRic)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fric_hist
+
+fdiv_hist <- ggplot(indices2, aes(x = FDiv)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fdiv_hist
+
+feve_hist <- ggplot(indices2, aes(x = FEve)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+feve_hist
+
+fdis_hist <- ggplot(indices2, aes(x = FDis)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+fdis_hist
+
+# Histograms are weird
+# n=9 for each severity, so cannot use CLT to justify normality
+
+
+
+# Explore variance
+variances <- indices2 %>% 
+  group_by(severity) %>% 
+  summarize(
+    var_fric = var(FRic, na.rm = TRUE),
+    var_fdiv = var(FDiv, na.rm = TRUE),
+    var_feve = var(FEve, na.rm = TRUE),
+    var_fdis = var(FDis)
+  )
+
+variances
+
+# Variances for FRic and FDis are too different (>4x) to satisfy assumptions of ANOVA
+# Variances for FDiv and FEve are close enough for ANOVA
+
+
+
+#### Test for significant differences in means ####
+
+# FRic: Kruskal Wallis and post-hoc pairwise testing (Dunn's test)
+
+fric_kw <- kruskal.test(FRic ~ severity, data = indices2)
+
+fric_kw # p>0.05, so there no sig difference in means
+
+# FDiv: ANOVA
+
+fdiv_aov <- aov(FDiv ~ severity, data = indices2)
+
+summary(fdiv_aov) # p>0.05 so there are not significant differences in means
+
+# FEve: ANOVA
+
+feve_aov <- aov(FEve ~ severity, data = indices2)
+
+summary(feve_aov) # p>0.05 so there are not significant differences in means
+
+# FDis: Kruskal-Wallis
+
+fdis_kw <- kruskal.test(FDis ~ severity, data = indices2)
+
+fdis_kw # p<0.05, so there is at least one sig difference in means
+
+```
+
+
+```{r FD jitter plots 2, fig.width=6, fig.height=4, echo=FALSE, warning=FALSE}
+
+# Jitter plots of the mean of FRic across severities
+
+fric_jitter2 <- ggline(indices2, x = 'severity', y = 'FRic',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FRic')
+
+# Jitter plots of the mean of FDiv across severities
+
+fdiv_jitter2 <- ggline(indices2, x = 'severity', y = 'FDiv',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FDiv')
+
+# Jitter plots of the mean of FEve across severities
+
+feve_jitter2 <- ggline(indices2, x = 'severity', y = 'FEve',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FEve')
+
+# Jitter plots of the mean of FDis across severities
+
+fdis_jitter2 <- ggline(indices2, x = 'severity', y = 'FDis',
+                      add = c('mean_se', 'jitter'),
+                      xlab = 'Fire Severity',
+                      ylab = 'FDis')
+
+# All four plots
+
+grid.arrange(fric_jitter2, fdiv_jitter2, feve_jitter2, fdis_jitter2)
+
+```
+
+

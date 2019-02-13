@@ -1,0 +1,221 @@
+---
+title: "Phylogenetic Diversity"
+author: "Kate Culhane"
+date: "January 31, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=5, fig.height=3, fig.align='center')
+```
+
+
+```{r packages & data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+library(ape)
+library(picante)
+library(lefse)
+library(geiger)
+library(ggpubr)
+
+# Load necessary data
+
+smamms <- read_csv('./data/unique_smamms.csv') # using dataset with one row per unique individual
+
+tree <- read.nexus('./data/Small_phylogeny.nex') # tree from PHYLACINE
+
+```
+
+
+```{r data wrangling, include=FALSE}
+
+# Update classes
+
+smamms <- smamms %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+# Data frame containing only sites and severities
+
+sevs <- smamms %>% 
+  group_by(site) %>% 
+  filter(row_number()==1) %>% 
+  select(site, severity)
+
+# Update binomial format (remove spaces)
+
+smamms <- smamms %>% 
+  mutate(binomial_new = gsub(' ', '_', binomial))
+
+```
+
+
+
+```{r species matrices, include=FALSE}
+
+# Create a species matrix
+
+matrix <- smamms %>% 
+  mutate(site = factor(site, levels = sevs$site)) %>% # order sites by severity
+  group_by(site, severity, binomial_new) %>% 
+  tally() %>% # count individuals per species per site
+  spread(binomial_new, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) %>% # replace NAs with 0
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) %>% 
+  arrange(severity)
+
+```
+
+###Phylogeny
+
+Phylogeny data from PHYLACINE.
+
+- I assumed this is the most recent phylogeny, but now I'm not sure?
+
+```{r phylogeny, echo=FALSE}
+
+# Phylogeny
+
+phylo <- tree[[1]]
+
+# Trim tree
+
+species <- unique(smamms$binomial_new)
+
+pruned <- drop.tip(phylo, phylo$tip.label[-match(species, phylo$tip.label)])
+
+par(mar = c(1,1,1,1))
+plot(pruned)
+
+```
+
+
+###Faith's PD
+
+
+```{r PA PD, include=FALSE}
+
+# FAITH'S PD - P/A
+
+# Convert species matrix to presence/absence
+pres.abs <- matrix[, -2]
+for(i in 2:ncol(pres.abs)) {
+  pres.abs[which(pres.abs[,i] > 0), i] <- 1
+}
+
+# Calculate Faith's PD for each site
+PDData <- data.frame(pres.abs$site, pd(pres.abs[,-1], pruned, include.root = F))
+names(PDData)[1] <- "site"
+
+# Calculate PD of a community containing all taxa in regional phylogeny
+allTaxaCom <- pres.abs[1, -1]
+allTaxaCom[1,] <- 1
+pd(allTaxaCom, pruned, include.root = F) # highest PD is 364.26
+
+```
+
+
+```{r weighted faiths pd, include=FALSE}
+
+# Calculate weighted Faith's PD for each site
+
+matrix2 <- matrix %>% 
+  as.data.frame(.) %>% 
+  mutate(Peromyscus_maniculatus = as.numeric(Peromyscus_maniculatus)) %>% 
+  filter(site != 'HICORN' & site != 'HISQUE' & site != 'HITEDD' & site != 'HIWALK')
+
+sites <- matrix2$site
+
+matrix3 <- matrix2 %>% 
+  select(-site, -severity)
+
+rownames(matrix3) <- sites
+
+weighted_pd <- as.data.frame(weighted.faith(pruned, matrix3)) %>% 
+  mutate(site = rownames(.),
+         PD = weighted.faith(pruned, matrix3)) %>% 
+  select(site, PD)
+
+
+
+# Calculate PD for sites with 1 species (P. maniculatus)
+    # Equal to the branch length for P. maniculatus
+
+PEMA <- 'Peromyscus_maniculatus'
+
+pema_prune <- drop.tip(pruned, pruned$tip.label[-match(PEMA, pruned$tip.label)])
+
+pema_pd <- pema_prune$edge.length
+
+# Update PD data frame
+
+pd_indices <- full_join(weighted_pd, sevs) %>% 
+  mutate(PD = replace_na(PD, pema_pd))
+
+```
+
+
+
+```{r PD by severity, include=FALSE}
+
+# Does phylogenetic diversity vary across a fire severity gradient?
+
+
+#### Explore the data distribution ####
+
+# Make histograms for each treatment
+ggplot(pd_indices, aes(x = PD)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+# Histogram is weird
+# n=9 for each severity, so cannot use CLT to justify normality
+
+
+
+# Explore variance
+pd_indices %>% 
+  group_by(severity) %>% 
+  summarize(far_pd = var(PD, na.rm = TRUE))
+
+# Variances are close enough for ANOVA
+
+
+
+#### Test for significant differences in means ####
+
+# Kruskal Wallis and post-hoc pairwise testing (Dunn's test)
+
+pd_kw <- kruskal.test(PD ~ severity, data = pd_indices)
+
+pd_kw # p = 0.035
+
+# ANOVA
+
+pd_aov <- aov(PD ~ severity, data = pd_indices)
+
+summary(pd_aov) # p = 0.024
+
+
+```
+
+**Weighted Faith's PD decreased across the fire severity gradient.** Significant by both Kruskal-Wallis and ANOVA (p<0.05).
+
+- For communities with only one species, Faith's PD (weighted & unweighted) equals the branch length for that one species
+    - When the 4 communities with one species are left out, there's still a significant differnece between severities, but high overlaps greatly with both unb and mod
+
+```{r FD jitter plots, echo=FALSE, warning=FALSE}
+
+# Jitter plot of the mean of PD across severities
+
+ggline(pd_indices, x = 'severity', y = 'PD',
+       add = c('mean_se', 'jitter'),
+       xlab = 'Fire Severity',
+       ylab = 'Weighted Faiths PD')
+
+```

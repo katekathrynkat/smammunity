@@ -296,7 +296,7 @@ prop_species2 <- prop_species %>%
 # Column graph of proportional treatment abundances per species
 
 colors <- c('darkgreen', 'orange', 'red')
-labs <- c('Unburned', 'Moderate', 'High')
+labs <- c('Unburned', 'Low-Moderate', 'High')
 
 prop_species_fig <- ggplot(prop_species2,
                            aes(x = binomial_short,

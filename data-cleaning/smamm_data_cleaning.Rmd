@@ -20,7 +20,7 @@ library(tidyverse)
 
 # Load necessary data
 
-dat <- read_csv('./data/Mammals_proofed.csv',
+dat <- read_csv('./data-cleaning/Mammals_proofed.csv',
                 na = c('MD', ''),
                 col_types = cols (day = col_character()))
 

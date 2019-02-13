@@ -105,6 +105,10 @@ diversity <- data_frame(sites, H) %>%
   group_by(site) %>% 
   filter(row_number()==1)
 
+# Export as csv
+
+write_csv(diversity,'./data/diversity.csv', col_names = TRUE)
+
 ```
 
 
