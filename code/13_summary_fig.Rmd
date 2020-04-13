@@ -1,0 +1,145 @@
+---
+title: "Summary Figure"
+author: "Kate Culhane"
+date: "2/18/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width=5, fig.height=3)
+```
+
+<br>
+
+```{r packages & data}
+
+# Load necessary packages
+
+library(tidyverse)
+library(ggnewscale)
+library(scales)
+library(ggthemes)
+library(cowplot) # plot_grid function
+
+# Load necessary data
+
+abundance <- read_csv('output_data/abundance.csv')
+
+diversity <- read_csv('output_data/diversity.csv')
+
+FD <- read_csv('output_data/FD_biomass.csv')
+
+PD <- read_csv('output_data/PD.csv')
+
+```
+
+```{r}
+
+# Combined data frame
+
+metrics <- full_join(abundance, FD) %>% 
+  full_join(diversity) %>% 
+  full_join(PD) %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')),
+         biomass = biomass_total/1000) %>% 
+    select(site, severity,
+           n_adj, biomass,
+           n_adj_pema, n_adj_sotr,
+           rarefied_richness, J,
+           FEve, PD)
+
+# Summary data frame 
+
+summary <- metrics %>% 
+  gather(key = 'metric', value = 'value', 3:10) %>% 
+  group_by(metric, severity) %>% 
+  summarize(mean = mean(value, na.rm = TRUE),
+            se = sd(value, na.rm = TRUE)/sqrt(length(value))) %>% 
+  ungroup() %>% 
+  mutate(metric = factor(metric, levels = c('n_adj', 'biomass',
+                                            'n_adj_pema', 'n_adj_sotr',
+                                            'rarefied_richness', 'J',
+                                            'FEve', 'PD')))
+
+metric_labs <- c('Total\nAbundance', 'Biomass (kg)',
+              'Abundance:\nP. maniculatus', 'Abundance:\nS. trowbridgii',
+              'Rarefied\nRichness', 'Evenness',
+              'FEve', 'Faith\'s PD')
+names(metric_labs) <- c('n_adj', 'biomass', 'n_adj_pema', 'n_adj_sotr',
+                        'rarefied_richness', 'J', 'FEve', 'PD')
+
+```
+
+```{r}
+
+# Summary Figure A
+
+summary %>% 
+  filter(metric=='n_adj' | metric=='biomass' | metric=='n_adj_pema' | metric=='n_adj_sotr') %>% 
+  ggplot() +
+  geom_col(aes(x = severity, y = mean, fill = severity)) +
+  geom_errorbar(aes(x = severity, ymin = mean-se, ymax = mean+se),
+                width = 0.2) +
+  scale_fill_manual(values = c('darkgreen', 'orange', 'red')) +
+  theme_void() +
+  theme(legend.position = 'NA',
+        axis.line.y = element_line(),
+        axis.line.x = element_line(),
+        axis.text.y = element_text(size = 10),
+        strip.text = element_text(size = 11, angle = 270),
+        strip.placement = 'outside',
+        plot.margin = unit(c(10,10,10,10), 'pt'),
+        panel.spacing.x = unit(30, 'pt'),
+        panel.spacing.y = unit(35, 'pt')) +
+  scale_y_continuous(breaks = pretty_breaks(3),
+                     expand = c(0,0)) +
+  facet_wrap(~metric, ncol = 2, dir = 'h', scales = 'free',
+             strip.position = 'left',
+             labeller = labeller(metric = metric_labs))
+
+ggsave('figs/fig2.png', plot = last_plot(),
+       width = 4, height = 3, units = 'in')
+
+```
+
+```{r}
+
+# Summary Figure B
+
+summary %>% 
+  filter(metric=='rarefied_richness' | metric=='J' | metric=='FEve' | metric=='PD') %>% 
+  ggplot() +
+  geom_col(aes(x = severity, y = mean, fill = severity)) +
+  geom_errorbar(aes(x = severity, ymin = mean-se, ymax = mean+se),
+                width = 0.2) +
+  scale_fill_manual(values = c('darkgreen', 'orange', 'red')) +
+  theme_void() +
+  theme(legend.position = 'NA',
+        axis.line.y = element_line(),
+        axis.line.x = element_line(),
+        axis.text.y = element_text(size = 10),
+        strip.text = element_text(size = 11, angle = 270),
+        strip.placement = 'outside',
+        plot.margin = unit(c(10,10,10,10), 'pt'),
+        panel.spacing.x = unit(30, 'pt'),
+        panel.spacing.y = unit(35, 'pt')) +
+  scale_y_continuous(breaks = pretty_breaks(3),
+                     expand = c(0,0)) +
+  facet_wrap(~metric, ncol = 2, dir = 'h', scales = 'free',
+             strip.position = 'left',
+             labeller = labeller(metric = metric_labs))
+
+ggsave('figs/fig3.png', plot = last_plot(),
+       width = 4, height = 3, units = 'in')
+
+```
+
+```{r eval=FALSE}
+
+rmarkdown::render('code/13_summary_fig.Rmd', output_file = '../docs/13_summary_fig_NORARE.html')
+
+```

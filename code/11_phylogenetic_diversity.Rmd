@@ -1,0 +1,297 @@
+---
+title: "Phylogenetic Diversity"
+author: "Kate Culhane"
+date: "January 31, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width=5, fig.height=3)
+```
+
+<br>
+
+```{r packages & data}
+
+# Load necessary packages
+
+library(tidyverse)
+library(ape)
+library(picante)
+library(lefse)
+library(geiger)
+library(ggpubr)
+
+# Load necessary data
+
+smamms <- read_csv('output_data/unique_smamms.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) %>% 
+  mutate(binomial_new = gsub(' ', '_', binomial)) # update binomial format for analyses
+
+# Create species matrix with binomials as the column names
+
+matrix <- smamms %>% 
+  group_by(site, severity, binomial_new) %>% 
+  tally() %>% # count individuals per site
+  spread(binomial_new, n) %>% # reformat into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) %>% # replace NAs with 0
+  arrange(severity)
+
+```
+
+### Phylogenetic data
+
+- Tree from PHYLACINE 1.2: The Phylogenetic Atlas of Mammal Macroecology
+- 11 species total
+  - 10 species from order Rodentia
+  - 1 species from order Soricomorpha
+
+```{r phylogeny}
+
+# Phylogeny
+
+tree <- read.nexus('raw_data/lit_data/small_phylogeny.nex')
+
+phylo <- tree[[1]]
+
+# Trim tree
+
+species <- unique(smamms$binomial_new)
+
+pruned <- drop.tip(phylo, phylo$tip.label[-match(species, phylo$tip.label)])
+
+par(mar = c(1,1,1,1))
+plot(pruned)
+
+```
+
+<br>
+
+### Weighted Faith's PD
+
+```{r PA PD, include=FALSE}
+
+# FAITH'S PD - P/A
+
+# Convert species matrix to presence/absence
+
+matrix_pa <- matrix[, -2]
+for(i in 2:ncol(matrix_pa)) {
+  matrix_pa[which(matrix_pa[,i] > 0), i] <- 1
+}
+
+# Calculate Faith's PD for each site
+
+pd <- data.frame(matrix_pa$site, pd(matrix_pa[,-1], pruned, include.root = F))
+names(pd)[1] <- 'site'
+
+# Calculate PD of a community containing all taxa in regional phylogeny
+
+allTaxaCom <- matrix_pa[1, -1]
+allTaxaCom[1,] <- 1
+pd(allTaxaCom, pruned, include.root = F) # highest PD is 364.26
+
+```
+
+
+```{r weighted faiths pd}
+
+# Calculate weighted Faith's PD for each site
+
+matrix2 <- matrix %>% 
+  as.data.frame(.) %>% 
+  mutate(Peromyscus_maniculatus = as.numeric(Peromyscus_maniculatus)) %>% 
+  filter(site != 'HICORN' & site != 'HISQUE' & site != 'HITEDD' & site != 'HIWALK') # filter out sites with only one species (PEMA)
+
+sites <- matrix2$site
+
+matrix3 <- matrix2 %>% 
+  select(-site, -severity)
+
+rownames(matrix3) <- sites
+
+weighted_pd <- as.data.frame(weighted.faith(pruned, matrix3)) %>% 
+  mutate(site = rownames(.)) %>% 
+  rename(PD = 'weighted.faith(pruned, matrix3)') %>% 
+  select(site, PD)
+
+
+
+# Calculate PD for sites with 1 species (P. maniculatus)
+    # Equal to the branch length for P. maniculatus
+
+PEMA <- 'Peromyscus_maniculatus'
+
+pema_prune <- drop.tip(pruned, pruned$tip.label[-match(PEMA, pruned$tip.label)])
+
+pema_pd <- pema_prune$edge.length
+
+# Update PD data frame
+
+pd_indices <- full_join(weighted_pd, matrix[1:2]) %>% 
+  mutate(PD = replace_na(PD, pema_pd))
+
+```
+
+**Weighted Faith's PD decreased across the fire severity gradient:** 
+    
+```{r FD jitter plots, echo=FALSE, warning=FALSE}
+
+# Jitter plot of the mean of PD across severities
+
+ggline(pd_indices, x = 'severity', y = 'PD',
+       add = c('mean_se', 'jitter'),
+       xlab = 'Fire Severity',
+       ylab = 'Weighted Faiths PD')
+
+```
+
+```{r PD by severity, eval=FALSE}
+
+# Does phylogenetic diversity vary across a fire severity gradient?
+
+# Explore the data distribution
+
+ggplot(pd_indices, aes(x = PD)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+pd_indices %>% 
+  group_by(severity) %>% 
+  summarize(far_pd = var(PD, na.rm = TRUE))
+
+# Histogram is weird
+# n=9 for each severity, so cannot use CLT to justify normality
+# Variances are NOT close enough for ANOVA
+
+
+
+# Test for significant differences in means
+
+# Kruskal Wallis and post-hoc pairwise testing (Dunn's test)
+
+kruskal.test(PD ~ severity, data = pd_indices)
+
+dunn.test(pd_indices$PD, pd_indices$severity,
+          method = 'bonferroni') # Bonferroni correction
+
+# ANOVA
+
+aov(PD ~ severity, data = pd_indices)
+
+```
+
+- Significant by both Kruskal-Wallis and ANOVA (p<0.05).
+- For communities with only one species, Faith's PD (weighted & unweighted) equals the branch length for that one species
+    - When the 4 communities with one species are left out, there's still a significant differnece between severities, but high overlaps greatly with both unb and mod
+- Outliers
+    - High severity: HISHRU and HIBADR are high because they had Peromyscus, Tamias, and Otospermophilus species
+    - Low-mod severity: MIXMIX is low because it only had two Peromyscus species
+    
+<br>
+
+### Removing Sorex from PD estimates
+
+```{r weighted faiths pd --sorex, eval=FALSE}
+
+# Calculate weighted Faith's PD for each site
+
+matrix2 <- matrix %>% 
+  as.data.frame(.) %>% 
+  mutate(Peromyscus_maniculatus = as.numeric(Peromyscus_maniculatus)) %>% 
+  filter(site != 'HICORN' & site != 'HISQUE' & site != 'HITEDD' & site != 'HIWALK') %>% # filter out sites with only one species (PEMA)
+  select(-Sorex_trowbridgii) %>% # remove SOTR
+  filter(site != 'GRNCAR' & site != 'GRNQUA' & site != 'GRNSNO') # filter out sites with only one species when SOTR is excluded
+
+sites <- matrix2$site
+
+matrix3 <- matrix2 %>% 
+  select(-site, -severity)
+
+rownames(matrix3) <- sites
+
+weighted_pd_nosorex <- as.data.frame(weighted.faith(pruned, matrix3)) %>% 
+  mutate(site = rownames(.)) %>% 
+  rename(PD = 'weighted.faith(pruned, matrix3)') %>% 
+  select(site, PD)
+
+# Fill with PD for sites with one species
+
+pd_indices_nosorex <- full_join(weighted_pd_nosorex, matrix[1:2]) %>% 
+  mutate(PD = replace_na(PD, pema_pd))
+
+```
+
+**Weighted Faith's PD with *Sorex trowbridgii* removed did not decrease across the fire severity gradient:**
+
+```{r FD jitter plots --sorex, eval=FALSE}
+
+# Jitter plot of the mean of PD across severities
+
+ggline(pd_indices_nosorex, x = 'severity', y = 'PD',
+       add = c('mean_se', 'jitter'),
+       xlab = 'Fire Severity',
+       ylab = 'Weighted Faiths PD')
+
+```
+
+```{r PD by severity --sorex, eval=FALSE}
+
+# Does phylogenetic diversity vary across a fire severity gradient?
+
+
+# Explore the data distribution
+
+ggplot(pd_indices2, aes(x = PD)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+pd_indices2 %>% 
+  group_by(severity) %>% 
+  summarize(far_pd = var(PD, na.rm = TRUE))
+
+# Histogram is weird
+# n=9 for each severity, so cannot use CLT to justify normality
+
+# Variances are close enough for ANOVA
+
+
+
+# Test for significant differences in means
+
+# Kruskal Wallis and post-hoc pairwise testing (Dunn's test)
+
+kruskal.test(PD ~ severity, data = pd_indices2)
+# p = 0.3217
+
+# ANOVA
+
+pd_aov <- aov(PD ~ severity, data = pd_indices2)
+summary(pd_aov) # p = 0.45
+
+```
+
+- Not significant by both Kruskal-Wallis and ANOVA (p > 0.3).
+
+```{r eval=FALSE}
+
+# Write csv with PD values for each site
+
+pd_csv <- full_join(pd_indices, pd_indices_nosorex, by = c('site', 'severity')) %>% 
+  rename(PD = PD.x,
+         PD_nosorex = PD.y)
+
+write_csv(pd_csv, 'output_data/PD.csv', col_names = TRUE)
+
+```
+
+```{r eval=FALSE}
+
+rmarkdown::render('code/11_phylogenetic_diversity.Rmd', output_file = '../docs/11_phylogenetic_diversity_NORARE.html')
+
+```

@@ -1,0 +1,68 @@
+---
+title: "GLM"
+author: "Kate Culhane"
+date: "2/14/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Salvaged code for a GLM looking at habitat drivers of diversity...didn't end up using
+
+```{r packages and data}
+
+# Load necessary packages
+
+library(tidyverse)
+library(lme4)
+library(nlme)
+
+```
+
+### GLM for diversity
+
+```{r GLM data wrangling}
+
+# Data wrangling
+
+dat_glm <- full_join(diversity, habitat) %>% 
+  full_join(site_meta) %>% 
+  select(site, block, severity, litter_cover, H) %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+```
+
+```{r GLM, eval=FALSE}
+
+# GLMs
+
+H_lme <- lme(H ~ severity, random = ~ 1 | block,
+             data = dat_glm)
+summary(H_lme)
+plot(H_lme)
+qqnorm(resid(H_lme))
+
+H_lme <- lme(H ~ litter_cover, random = ~ 1 | block,
+             data = dat_glm)
+summary(H_lme)
+plot(H_lme)
+qqnorm(resid(H_lme))
+
+H_lme <- lme(H ~ severity + litter_cover, random = ~ 1 | block,
+             data = dat_glm)
+summary(H_lme)
+plot(H_lme)
+qqnorm(resid(H_lme))
+
+
+test <- lm(H ~ severity + litter_cover, data = dat_glm)
+summary(test)
+par(mfrow = c(2,2))
+plot(test)
+
+
+ggplot(dat_glm) + geom_point(aes(x = litter_cover, y = H))
+
+```

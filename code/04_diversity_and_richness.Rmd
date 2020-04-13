@@ -1,0 +1,590 @@
+---
+title: "Small Mammal Diversity"
+author: "Kate Culhane"
+date: "November 7, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width=5, fig.height=3)
+```
+
+<br>
+
+```{r packages and data}
+
+# Load necessary packages
+
+library(tidyverse)
+library(vegan)
+library(VennDiagram)
+library(iNEXT)
+library(dunn.test)
+
+# Load necessary data
+
+matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+matrix_adj_df <- read_csv('output_data/species_matrix_adj.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+effort <- read_csv('output_data/effort.csv')
+
+```
+
+```{r data wrangling}
+
+# Transform data frames into matrices
+
+matrix <- as.matrix(matrix_df[-c(1,2)])
+rownames(matrix) <- matrix_df$site
+
+matrix_adj <- as.matrix(matrix_adj_df[-c(1,2)])
+rownames(matrix_adj) <- matrix_adj_df$site
+
+# Create separate species matrices for each treatment
+
+matrix_unb <- matrix[1:9,] # species matrix for low severity
+matrix_mod <- matrix[10:18,] # species matrix for med severity
+matrix_high <- matrix[19:27,] # species matrix for high severity
+
+# Create matrix with species pooled for each treatment
+
+matrix_pooled_df <- matrix_df %>% 
+  group_by(severity) %>% 
+  summarize_if(is.numeric, sum)
+
+matrix_pooled <- as.matrix(matrix_pooled_df[-1])
+rownames(matrix_pooled) <- matrix_pooled_df$severity
+
+# Vectors for boxplots
+
+colors <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
+```
+
+### Species Richness
+
+#### Number of species
+
+**Number of species per site, by fire severity:**
+
+```{r}
+
+# Calculate species richness (number of species) for each site
+
+n <- specnumber(matrix)
+
+# Make a dataframe with site, severity, and number of species
+
+n_spp <- data_frame(site = matrix_df$site, severity = matrix_df$severity, n_spp = n)
+
+# Boxplots
+
+ggplot(n_spp, aes(x = severity, y = n)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Number of Species') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+<br>
+
+**Venn diagram of the number of species found in each fire severity:** 
+
+```{r species Venn diagram, fig.width=2, fig.height=2, echo=FALSE, eval=FALSE}
+
+# Vectors of species at each severity
+
+df <- gather(matrix_pooled_df, key = species, value = n, 2:12) %>% 
+  filter(n != 0)
+
+unb <- filter(df, severity == 'unb')
+mod <- filter(df, severity == 'mod')
+high <- filter(df, severity == 'high')
+
+all_spp <- list(unb$species, mod$species, high$species)
+names(all_spp) <- c('Unburned', 'Low-Moderate', 'High')
+
+# VennDiagram
+
+spp_venn <- venn.diagram(all_spp,
+                         filename = NULL,
+                         lty = 'blank',
+                         cex = 1,
+                         fontfamily = 'sans',
+                         cat.pos = c(-18, 18, 180),
+                         cat.dist = c(0.07, 0.07, 0.05),
+                         cat.cex = 0.9,
+                         cat.fontfamily = 'sans',
+                         fill = c('darkgreen', 'orange', 'red'))
+plot.new()
+grid.draw(spp_venn)
+
+```
+
+- Nine species were found at unburned sites, eight at low-moderate severity sites, and seven at high severity sites
+- Shared species: *P. maniculatus*, *N. quadrimaculatus*, *O. beecheyi*, *P. boylii*
+- Species unique to unburned sites: *G. sabrinus*, *R. megalotis*
+
+<br>
+
+#### Individual-based rarefaction
+
+Sites pooled by severity
+
+```{r rarefaction curves, fig.height=4}
+
+# Rarefaction curves
+
+accum_unb <- specaccum(matrix_unb, method = 'rarefaction', permutations = 1000)
+accum_mod <- specaccum(matrix_mod, method = 'rarefaction', permutations = 1000)
+accum_high <- specaccum(matrix_high, method = 'rarefaction', permutations = 1000)
+
+# Plot curves
+
+plot(accum_unb,
+     ci = 2, # 95% confidence interval
+     ci.type = 'polygon', ci.lty = 0,
+     ci.col = rgb(red=0, green=1, blue=0, alpha=0.25),
+     lwd = 2, col = 'darkgreen')
+lines(accum_mod,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon',
+      ci.col = rgb(red=1, green=0.5, blue=0, alpha=0.25), ci.lty = 0,
+      lwd = 2, col = 'orange')
+lines(accum_high,
+      ci = 2, # 95% confidence interval
+      ci.type = 'polygon', ci.lty = 0,
+      ci.col = rgb(red=1, green=0, blue=0, alpha=0.25),
+      lwd = 2, col = 'red')
+
+```
+
+<br>
+
+#### Individual-based rarefaction, scaled to individuals
+
+```{r}
+
+# ggplot using individual-based rarefaction
+
+unb_data <- data.frame(site = accum_unb$sites,
+                       indv = accum_unb$individuals,
+                       richness = accum_unb$richness,
+                       CI = accum_unb$sd)
+mod_data <- data.frame(site = accum_mod$sites,
+                       indv = accum_mod$individuals,
+                       richness = accum_mod$richness,
+                       CI = accum_mod$sd)
+high_data <- data.frame(site = accum_high$sites,
+                        indv = accum_high$individuals,
+                        richness = accum_high$richness,
+                        CI = accum_high$sd)
+
+ggplot() +
+  geom_line(data = unb_data,
+            aes(x = indv, y = richness),
+            size = 1, color = 'darkgreen') +
+  geom_ribbon(data = unb_data,
+              aes(x = indv, ymin = (richness-2*CI), ymax=(richness+2*CI)),
+              alpha = 0.2, fill = 'darkgreen') +
+  geom_line(data = mod_data,
+            aes(x = indv, y = richness),
+            size = 1, color = 'orange') +  
+  geom_ribbon(data = mod_data,
+              aes(x = indv, ymin = (richness-2*CI), ymax=(richness+2*CI)),
+              alpha = 0.2, fill = 'orange') +
+  geom_line(data = high_data,
+            aes(x = indv, y = richness),
+            size = 1, color = 'red') +
+  geom_ribbon(data = high_data,
+              aes(x = indv, ymin = (richness-2*CI), ymax=(richness+2*CI)),
+              alpha = 0.2, fill = 'red') +
+  scale_y_continuous(breaks = c(2,4,6,8,10)) +
+  labs(x = 'Individuals Caught',
+       y = 'Richness') +
+  theme_classic() +
+  theme(axis.title.x = element_text(size = 13),
+        axis.title.y = element_text(size = 13),
+        axis.text.x = element_text(size = 11, color = 'black'),
+        axis.text.y = element_text(size = 11, color = 'black'),
+        plot.margin = unit(c(10,10,10,10), 'pt'))
+
+```
+
+```{r legend, eval=FALSE}
+
+# Stuff for legend
+
+x <- data.frame(letter = c('a','a','b','b','c','c'),
+                value = c(1,1,2,2,3,3))
+
+ggplot(x, aes(x = value, y = value, color = letter)) +
+  geom_line(size = 1.3) +
+  geom_ribbon(aes(ymin = value+0.5, ymax = value-0.5, fill = letter), color = NA, alpha = 0.2) +
+  scale_color_manual(values = c('darkgreen', 'orange', 'red')) +
+  scale_fill_manual(values = c('darkgreen', 'orange', 'red')) +
+  theme(legend.key.size = unit(1, 'cm'))
+
+```
+
+<br>
+
+#### Individual-based rarefaction with unconstrained 95% confidence intervals
+
+```{r, fig.width=7}
+
+# Individual based rarefaction
+
+inext_matrix <- t(matrix_pooled)
+
+out <- iNEXT(inext_matrix, q = 0, datatype = 'abundance')
+
+# Plot curves
+
+df <- fortify(out, type=1) %>% 
+  mutate(site = factor(site, levels = c('unb', 'mod', 'high')))
+
+df <- fortify(out, type=1) %>% 
+  mutate(site = factor(site, levels = c('unb', 'mod', 'high')))
+df.point <- df[which(df$method=="observed"),]
+df.line <- df[which(df$method!="observed"),]
+df.line$method <- factor(df.line$method, 
+                         c("interpolated", "extrapolated"),
+                         c("interpolation", "extrapolation"))
+ 
+ggplot(df, aes(x = x, y = y, color = site)) + 
+  geom_line(data = df.line, aes(linetype = method),
+            lwd = 1) +
+  geom_ribbon(aes(ymin = y.lwr, ymax = y.upr, fill = site, color = NULL),
+              alpha=0.2) +
+  scale_linetype(name = 'Method', labels = c('Interpolation', 'Extrapolation')) +
+  scale_color_manual(name = 'Severity', values = c('darkgreen', 'orange', 'red'),
+                     labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +
+  scale_fill_manual(name = 'Severity', values = c('darkgreen', 'orange', 'red'),
+                    labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +
+  labs(x = 'Number of Individuals',
+       y = 'Rarefied Richness') +
+  theme(legend.title = element_blank()) +
+  theme_classic()
+
+ggsave('figs/fig4.png', plot = last_plot(),
+       width = 6, height = 3, units = 'in')
+
+```
+
+<br>
+
+#### Sample-based rarefaction
+
+**Using random method (site-based):**
+
+```{r species accumulation curves}
+
+# Using random method (site-based)
+
+accum_unb <- specaccum(matrix_unb, method = 'random', permutations = 1000,
+                       w = effort$effort[1:9])
+unb_data <- data.frame(site = accum_unb$sites,
+                       effort = accum_unb$effort,
+                       richness = accum_unb$richness,
+                       SD = accum_unb$sd)
+
+accum_mod <- specaccum(matrix_mod, method = 'random', permutations = 1000,
+                       w = effort$effort[9:18])
+mod_data <- data.frame(site = accum_mod$sites,
+                       effort = accum_mod$effort,
+                       richness = accum_mod$richness,
+                       SD = accum_mod$sd)
+
+accum_high <- specaccum(matrix_high, method = 'random', permutations = 1000,
+                        w = effort$effort[19:27])
+high_data <- data.frame(site = accum_high$sites,
+                        effort = accum_high$effort,
+                        richness = accum_high$richness,
+                        SD = accum_high$sd)
+
+# Plot the species accumulation curves:
+
+ggplot() +
+  geom_line(data = unb_data,
+            aes(x = effort, y = richness),
+            size = 1, color = 'darkgreen') +
+  geom_ribbon(data = unb_data,
+              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
+              alpha = 0.2, fill = 'darkgreen') +
+  geom_line(data = mod_data,
+            aes(x = effort, y = richness),
+            size = 1, color = 'orange') +  
+  geom_ribbon(data = mod_data,
+              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
+              alpha = 0.2, fill = 'orange') +
+  geom_line(data = high_data,
+            aes(x = effort, y = richness),
+            size = 1, color = 'red') +
+  geom_ribbon(data = high_data,
+              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
+              alpha = 0.2, fill = 'red') +
+  labs(x = 'Trapping Effort',
+       y = 'Richness') +
+  theme_classic()
+
+```
+
+<br>
+
+#### Per-site richness (individual-based rarefaction estimates)
+
+```{r rarefaction, include=FALSE}
+
+# Calculate richness for each site using rarefaction
+
+raremax <- min(rowSums(matrix))
+raremax # minimum sample count = 5: rarefy using this value
+
+rarefied_richness <- rarefy(matrix, sample = raremax)
+
+# Make a dataframe with site, severity, and richness
+
+diversity <- data_frame(site = matrix_df$site, severity = matrix_df$severity, rarefied_richness)
+
+# Calculate mean richness for each treatment
+
+diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    rich_mean = mean(rarefied_richness, na.rm = TRUE),
+    rich_sd = sd(rarefied_richness, na.rm = TRUE)
+  )
+
+```
+
+```{r data distribution, eval=FALSE}
+
+# Explore the data distribution
+
+ggplot(diversity, aes(x = rarefied_richness)) +
+  geom_histogram(bins = 6) +
+  facet_wrap(~severity)
+
+ggplot(diversity, aes(sample = rarefied_richness)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+variances <- diversity %>% 
+  group_by(severity) %>% 
+  summarize(variance = var(rarefied_richness))
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+
+# The variances aren't that different for each severity
+
+
+
+
+# Test for significant differences in means
+
+# ANOVA
+rare_aov <- aov(rarefied_richness ~ severity, data = diversity)
+summary(rare_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing by Tukey's HSD
+TukeyHSD(rare_aov)
+# p=0.003 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+```{r Rarefied Richness boxplot}
+
+# Boxplots
+
+ggplot(diversity, aes(x = severity, y = rarefied_richness)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Rarefied Richness') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+- Differences in mean richness calculated from un-pooled rarefaction were significant (one-way ANOVA (2, 24) = 7.1, p < 0.01, n = 9 for each).
+- No way to account for sampling effort (uses raw species matrix with counts)
+
+<br>
+
+### Pielou's Evenness (J)
+
+```{r}
+
+# Calculate Pielou's Evenness
+
+J <- diversity(matrix_adj)/log(specnumber(matrix_adj)) # H / log (number of species)
+
+diversity <- cbind(diversity, J)
+diversity$J[is.nan(diversity$J)] <- NA
+
+```
+
+**Pielou's Evenness (J) decreased across the fire severity gradient:**
+
+```{r J boxplot}
+
+# Boxplots
+
+ggplot(diversity, aes(x = severity, y = J)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Pielou Evenness (J)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r J data distribution, eval=FALSE}
+
+# Calculate mean evenness for each treatment
+
+diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    J_mean = mean(J, na.rm = TRUE),
+    J_sd = sd(J, na.rm = TRUE)
+  )
+
+# Explore the data distribution
+
+ggplot(diversity, aes(x = J)) +
+  geom_histogram(bins = 6) +
+  facet_wrap(~severity)
+ggplot(diversity, aes(sample = J)) +
+  geom_qq() +
+  facet_wrap(~severity)
+diversity %>% 
+  group_by(severity) %>% 
+  summarize(variance = var(J, na.rm = TRUE))
+
+# Histograms look a little funky because sample size is so small
+# qq-plots look good
+# n=9 for each severity, so cannot use CLT to justify normality
+# The variances aren't that different for each severity
+
+
+# Test for significant differences in means
+
+# ANOVA
+J_aov <- aov(J ~ severity, data = diversity)
+summary(J_aov)
+# p=0.0499, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing with Tukey's HSD
+TukeyHSD(J_aov)
+# p=0.0419335 for unb vs. high, but otherwise p>0.05
+
+```
+
+<br>
+
+### Shannon Diversity (H)
+
+```{r calculate H}
+
+# Calculate Shannon-Weaver diversity index (H) for each site (adjusted for trapping effort)
+
+H <- diversity(matrix_adj)
+
+diversity <- cbind(diversity, H)
+
+# Export all diversity data
+
+write_csv(diversity, 'output_data/diversity.csv', col_names = TRUE)
+
+```
+
+**Shannon diversity (H) decreased across the fire severity gradient:**
+
+```{r H boxplot}
+
+# Boxplots
+
+ggplot(diversity, aes(x = severity, y = H)) +
+  geom_boxplot(aes(fill = severity)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() +
+  labs(x = 'Fire Severity',
+       y = 'Shannon Diversity (H)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r H data distribution, eval=FALSE}
+
+# Calculate mean diversity for each treatment
+
+diversity %>% 
+  group_by(severity) %>% 
+  summarise(
+    H_mean = mean(H),
+    H_sd = sd(H)
+  )
+
+# Explore the data distribution
+
+ggplot(diversity, aes(x = H)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+ggplot(diversity, aes(sample = H)) +
+  geom_qq() +
+  facet_wrap(~severity)
+
+variances <- diversity %>% 
+  group_by(severity) %>% 
+  summarize(variance = var(H))
+
+# Histograms look a little funky because sample size is so small
+# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
+# n=9 for each severity, so cannot use CLT to justify normality
+# The variances aren't that different for each severity
+
+
+
+# ANOVA
+H_aov <- aov(H ~ severity, data = diversity)
+summary(H_aov)
+# p<0.05, so there's at least one sig dif in means
+
+# Post-hoc pairwise testing with Tukey's HSD
+TukeyHSD(H_aov)
+# p=0.005 for low vs. high, but otherwise p>0.05
+# significant difference between low and high severity means, but not between med vs. low or high severities
+
+```
+
+- Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.1, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
+
+<br>
+
+```{r eval=FALSE}
+
+rmarkdown::render('code/04_diversity_and_richness.Rmd', output_file = '../docs/04_diversity_and_richness_NORARE.html')
+
+```

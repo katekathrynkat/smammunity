@@ -1,0 +1,484 @@
+---
+title: "Spatial Metrics"
+author: "Kate Culhane"
+date: "January 7, 2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+<br>
+
+### Spatial Data
+
+- **Monitoring Trends in Burn Severity (MTBS)**
+  - Fire severity data
+- **LANDFIRE**
+  - Data from 2012 (pre-burn)
+    - VCC
+    - EVC
+    - EVT
+  - Data from 2014 (post-burn)
+    - EVC
+    - EVT
+
+```{r packages and data, include=FALSE}
+
+# Load necessary packages
+
+library(tidyverse)
+library(raster) # for raster work
+library(rgdal) # for vector work (includes 'sp')
+library(sf)
+library(ggspatial)
+library(mapview)
+library(spatialEco) # for several landscape metrics
+library(geosphere)
+library(rgeos) # gDistance function
+
+# Update functions
+
+select <- dplyr::select
+summarize <- dplyr::summarize
+rename <- dplyr::rename
+
+# Load necessary data
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+# Load spatial data
+
+sites_dat <- read_csv('raw_data/spatial_data/site_coords.csv')
+
+# MTBS data
+
+mtbs_info <- GDALinfo('raw_data/spatial_data/ca3878212060420140913_20130730_20150805_dnbr6.tif') # metadata
+mtbs_raster <- raster('raw_data/spatial_data/ca3878212060420140913_20130730_20150805_dnbr6.tif') # burn severity
+bndy_shp <- readOGR(dsn = 'raw_data/spatial_data',
+                    layer = 'ca3878212060420140913_20130730_20150805_burn_bndy') # burn boundary
+
+# LANDFIRE data
+
+vvc_landfire <- raster("raw_data/spatial_data/vcc/hdr.adf") # vegetation condition classes
+vcc_raster <- projectRaster(vvc_landfire, crs=crs(mtbs_raster))
+
+evt_landfire <- raster("raw_data/spatial_data/evt_2012/hdr.adf") # existing vegetation type
+evt_raster <- projectRaster(evt_landfire, crs=crs(mtbs_raster))
+evc_landfire <- raster("raw_data/spatial_data/evc_2012/hdr.adf") # existing vegetation cover
+evc_raster <- projectRaster(evc_landfire, crs=crs(mtbs_raster))
+
+evt_landfire2 <- raster("raw_data/spatial_data/evt_2014/hdr.adf") # existing vegetation type
+evt_raster2 <- projectRaster(evt_landfire2, crs=crs(mtbs_raster))
+evc_landfire2 <- raster("raw_data/spatial_data/evc_2014/hdr.adf") # existing vegetation cover
+evc_raster2 <- projectRaster(evc_landfire2, crs=crs(mtbs_raster))
+
+```
+
+### Burn severity map
+
+```{r spatial data wrangling, include=FALSE}
+
+# Vector shapefile for the site corners
+
+corners_dat <- sites_dat %>% 
+  filter(type == 'Plot Corner') %>% 
+  mutate(northing = northing + 10000000)
+
+corners_points <- corners_dat
+
+coordinates(corners_points) <- ~ easting + northing
+
+proj4string(corners_points) <- '+proj=utm +zone=10 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs' # CRS: WGS84 / UTM zone 10S
+
+crs(mtbs_raster) # CRS for MTBS raster is NAD83 / AEA (Albers Equal-Area Conic)
+
+corners_aea <- spTransform(corners_points, CRS('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0
++datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ')) # update site CRS to match mtbs CRS
+
+# Vector shapefile for the site centroids
+
+centers_dat <- corners_dat %>% 
+  group_by(site) %>% 
+  summarize(x = mean(easting), # average corner coords for centroid coords
+            y = mean(northing))
+
+site_points <- centers_dat
+
+coordinates(site_points) <- ~ x + y
+
+proj4string(site_points) <- '+proj=utm +zone=10 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs' # CRS: WGS84 / UTM zone 10S
+
+sites_aea <- spTransform(site_points, CRS('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0
++datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ')) # update site CRS to match mtbs CRS
+
+# Export to csv
+
+x <- coordinates(sites_aea)[,1]
+y <- coordinates(sites_aea)[,2]
+
+site_centroids <- data.frame(sites_aea$site, x, y)
+
+write_csv(site_centroids,'output_data/site_centroids.csv', col_names = TRUE)
+
+```
+
+```{r create site polygons, include=FALSE}
+
+# Create polygons from site corner coords
+
+corners_df <- as.data.frame(corners_aea) %>% 
+  mutate(order = case_when(
+    point == 'N' ~ 1, point == 'W' ~ 2, point == 'S' ~ 3, point == 'E' ~ 4,
+    point == 'NW' ~ 1, point == 'NE' ~ 2, point == 'SE' ~ 3, point == 'SW' ~ 4
+  )) %>% 
+  arrange(desc(order))# update order of points so sites are rectangles, not bowties
+
+sites_list <- list() # empty list to fill with polys for each site
+
+for (i in unique(corners_df$site)) {
+  df <- corners_df %>% 
+    filter(site == i) %>% # filter for each site 
+    select(easting, northing) %>%
+    rename(x = easting, y = northing)
+  matrix <- base::as.matrix(df) # matrix with 1 col each for x, y
+  poly <- Polygon(matrix) # create polygon object
+  poly2 <- Polygons(list(poly), 1) # create multi-ring polygon object
+  poly3 <- SpatialPolygons(list(poly2)) # create SpatialPolygon objecct
+  proj4string(poly3) <-'+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ' # update CRS
+  assign(paste0(i, '_poly'), poly3) # assign each polygon a name
+  sites_list[[i]] <- poly3 # add each SpatialPolygons object to a list
+}
+
+```
+
+```{r}
+
+# Create polygons from mammal grid corner coords
+
+grid_corners <- sites_dat %>% 
+  filter(type == 'Mammal Grid') %>% 
+  mutate(northing = northing + 10000000)
+
+coordinates(grid_corners) <- ~ easting + northing
+
+proj4string(grid_corners) <- '+proj=utm +zone=10 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs' # CRS: WGS84 / UTM zone 10S
+
+grid_corners_aea <- spTransform(grid_corners, CRS('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0
++datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ')) # update site CRS to match mtbs CRS
+
+grid_corners_df <- as.data.frame(grid_corners_aea) %>% 
+  mutate(order = case_when(
+    point == 'A1' ~ 1,
+    point == 'A10' ~ 2, 
+    point == 'J10' ~ 3,
+    point == 'J1' ~ 4
+  )) %>% 
+  arrange(desc(order))# update order of points so that sites are rectangles instead of bowties
+
+grids_list <- list() # empty list to fill with polys for each site
+
+for (i in unique(grid_corners_df$site)) {
+  df <- grid_corners_df %>% 
+    filter(site == i) %>% # filter for each site 
+    select(easting, northing) %>%
+    dplyr::rename(x = easting, y = northing)
+  matrix <- base::as.matrix(df) # matrix with 1 col each for x, y
+  poly <- Polygon(matrix) # create polygon object
+  poly2 <- Polygons(list(poly), 1) # create multi-ring polygon object
+  poly3 <- SpatialPolygons(list(poly2)) # create SpatialPolygon objecct
+  proj4string(poly3) <-'+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ' # update CRS
+  assign(paste0(i, '_poly'), poly3) # assign each polygon a name
+  grids_list[[i]] <- poly3 # add each SpatialPolygons object to a list
+}
+
+# Largest homerange (GLSA) = 0.04 km^2 = 40000 m^2
+# Area of a circle = pi * r^2
+# 40000 = pi * r^2
+# r = sqrt(40000/pi) = 112.8379 m
+# d = 2r = 225.6758 m
+
+# Create polygons of each grid + buffer of 112.8379m
+
+buffsites_list <- list() # empty list to fill with buffered polys
+
+for (i in unique(grid_corners_df$site)) {
+  poly <- spTransform(grids_list[[i]], CRS('+proj=utm +zone=10 +south +ellps=WGS84 +datum=WGS84 +units=m +no_defs')) # transform to WGS to work with units of meters
+  buffpoly <- buffer(poly, width = 225.6758) # create buffered polygon
+  buffpoly_aea <- spTransform(buffpoly, CRS('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0
++datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ')) # transform back to AEA/NAD83
+  assign(paste0(i, '_buffpoly'), buffpoly_aea) # assign each polygon a name
+  buffsites_list[[i]] <- buffpoly_aea # add each SpatialPolygons object to a list
+}
+
+plot.new()
+plot(mtbs_raster)
+for (i in unique(grid_corners_df$site)) {
+  plot(buffsites_list[[i]],
+       col = 'blue',
+       add = TRUE)
+} # looks good!
+
+```
+
+- Burn severity data from MTBS (Monitoring Trends in Burn Severity)
+- Buffered mammal grids shown in blue (mammal grids buffered by the largest home range of a trapped mammals)
+
+<br>
+
+### Pre-disturbance habitat characteristics
+
+#### Existing Vegetation Type (EVT)
+
+```{r}
+
+# Map of EVT in the northern burn area
+
+plot.new()
+plot(evt_raster)
+
+```
+
+- **Average vegetation type:** average LANDFIRE EVT pixel value within buffered grid boundaries
+
+```{r evt within expanded sites, eval=FALSE}
+
+# EVT 2012
+
+evt_pixels <- data.frame(site = character(), # blank data frame
+                         evt = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evt_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evt = hdr) %>% 
+    select(site, evt)
+  evt_pixels <- rbind(evt_pixels, df) # add pixel information to df, one row per pixel
+}
+
+evt_summary <- evt_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evt = round(evt,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evt)
+  
+write_csv(evt_summary, 'output_data/EVT_2012.csv', col_names = TRUE)
+
+# EVT 2014
+
+evt_pixels2 <- data.frame(site = character(), # blank data frame
+                         evt = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evt_raster2, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evt = hdr) %>% 
+    select(site, evt)
+  evt_pixels2 <- rbind(evt_pixels2, df) # add pixel information to df, one row per pixel
+}
+
+evt_summary2 <- evt_pixels2 %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evt = round(evt,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evt)
+  
+write_csv(evt_summary2, 'output_data/EVT_2014.csv', col_names = TRUE)
+
+```
+
+#### Existing Vegetation Cover (EVC)
+
+```{r}
+
+# Map of EVC in the northern burn area
+
+plot.new()
+plot(evc_raster)
+
+```
+
+- **Average vegetation cover:** average LANDFIRE EVC pixel value within buffered grid boundaries
+
+```{r evt within expanded sites, eval=FALSE}
+
+# EVC 2012
+
+evc_pixels <- data.frame(site = character(), # blank data frame
+                         evc = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evc_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evc = hdr) %>% 
+    select(site, evc)
+  evc_pixels <- rbind(evc_pixels, df) # add pixel information to df, one row per pixel
+}
+
+evc_summary <- evc_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evc = round(evc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evc) 
+
+write_csv(evc_summary, 'output_data/EVC_2012.csv', col_names = TRUE)
+
+# EVC 2012
+
+evc_pixels2 <- data.frame(site = character(), # blank data frame
+                         evc = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evc_raster2, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evc = hdr) %>% 
+    select(site, evc)
+  evc_pixels2 <- rbind(evc_pixels2, df) # add pixel information to df, one row per pixel
+}
+
+evc_summary2 <- evc_pixels2 %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evc = round(evc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evc) 
+
+write_csv(evc_summary2, 'output_data/EVC_2014.csv', col_names = TRUE)
+
+```
+
+
+#### Vegetation Condition Classes (VCC)
+
+```{r}
+
+# Map of VCC in the northern burn area
+
+plot.new()
+plot(vcc_raster)
+
+```
+
+- **Average vegetation cover:** average LANDFIRE VCC pixel value within buffered grid boundaries
+
+```{r evt within expanded sites, eval=FALSE}
+
+# Create data frame with a row for each pixel in each expanded site
+
+vcc_pixels <- data.frame(site = character(), # blank data frame
+                         vcc = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(vcc_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(vcc = hdr) %>% 
+    select(site, vcc)
+  vcc_pixels <- rbind(vcc_pixels, df) # add pixel information to df, one row per pixel
+}
+
+vcc_summary <- vcc_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(vcc = round(vcc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(vcc)%>% 
+  filter(n/sum(n) > 0.1) %>% # remove pixels that make up <10% of the habitat 
+  mutate(vcc = case_when(
+    vcc == 3 ~ 'Vegetation Condition Class II.A Moderate to Low, Vegetation Departure 34-50% Vegetation Condition Class II Moderate Vegetation Departure',
+    vcc == 4 ~ 'Vegetation Condition Class II.B Moderate to High, Vegetation Departure 51-66% Vegetation Condition Class II Moderate Vegetation Departure'
+  ))
+
+```
+
+<br>
+
+### Calculating spatial metrics
+
+- **Average severity:** average MTBS pixel value within buffered site boundaries
+
+```{r avg severity within expanded sites, eval=FALSE}
+
+# Create data frame with a row for each pixel in each expanded site
+
+buffsite_pixels <- data.frame(site = character(), # blank data frame
+                           severity = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(mtbs_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel information within each buffered site polygon
+    mutate(site = i) %>% 
+    dplyr::rename(severity = ca3878212060420140913_20130730_20150805_dnbr6) %>% 
+    select(site, severity)
+  buffsite_pixels <- rbind(buffsite_pixels, df) # add pixel information to df, one row per pixel
+}
+
+# Summary of % of each severity within each buffered site
+
+buffpixel_summary <- buffsite_pixels %>% 
+  group_by(site, severity) %>% 
+  summarize(pixels = length(severity)) %>% 
+  group_by(site) %>% 
+  mutate(prop = pixels/sum(pixels))
+
+# Calculate average severity value for each site
+
+buffsite_sev_avg <- buffsite_pixels %>% 
+  group_by(site) %>% 
+  summarize(avg = mean(severity))
+
+```
+
+- **Distance to burn boundary:** distance from each site centroid to the nearest burn boundary (m)
+
+```{r calculate distance to burn boundary, eval=FALSE}
+
+# Calculate distance to burn boundary
+
+burn_edge <- as(bndy_shp, 'SpatialLinesDataFrame')
+
+distances <- t(gDistance(sites_aea, burn_edge, byid = TRUE))
+
+distance_to_edge <- data.frame(sites_aea$site, distances) %>% 
+  rename(site = sites_aea.site) %>% 
+  full_join(site_meta) %>% 
+  mutate(distance = case_when(
+    severity == 'unb' ~ -X0,
+    TRUE ~ X0
+  ))
+
+```
+
+```{r, eval=FALSE}
+
+# Export data
+
+spatial_metrics <- full_join(buffsite_sev_avg, distance_to_edge) %>% 
+  select(site, severity, avg, distance) %>% 
+  rename(avg_pixel = avg,
+         dist_to_edge = distance)
+
+write_csv(spatial_metrics, 'output_data/spatial_metrics.csv', col_names = TRUE)
+
+```
+
+```{r distance between sites, eval=FALSE}
+
+# Calculate distances between each pair of sites
+
+dist_all <- as.data.frame(pointDistance(site_points))
+
+dist_unb <- as.data.frame(pointDistance(site_points[1:9,]))
+
+dist_mod <- as.data.frame(pointDistance(sites_aea[19:27,]))
+
+dist_high <- as.data.frame(pointDistance(sites_aea[10:18,]))
+
+```
+
+```{r eval=FALSE}
+
+rmarkdown::render('code/06_spatial_metrics.Rmd', output_file = '../docs/06_spatial_metrics.html')
+
+```
