@@ -1,7 +1,6 @@
 ---
 title: "NMDS"
 author: "Kate Culhane"
-date: "December 23, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,7 +16,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(vegan)
@@ -29,7 +28,7 @@ library(ggvegan)
 
 select <- dplyr::select
 
-# Load necessary data
+# Load data
 
 matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -45,7 +44,6 @@ habitat_metrics <- read_csv('output_data/habitat_metrics.csv') %>%
 
 ```
 
-
 ```{r data wrangling}
 
 # Transform data frames into matrices
@@ -56,109 +54,72 @@ rownames(matrix) <- matrix_df$site
 matrix_adj <- as.matrix(matrix_adj_df[-c(1,2)])
 rownames(matrix_adj) <- matrix_adj_df$site
 
+# Create species matrix using relative abundance
+
+matrix_rel <- decostand(matrix, method = "total")
+
 # Severity data frame
 
 sevs <- select(matrix_df, site, severity)
 
 ```
 
-### Community composition
+### Community structure
 
-```{r distance metric, eval=FALSE}
+```{r nmds, include=FALSE}
 
 # Choose a distance metric
 
 rankindex(habitat_metrics$severity,
-          wisconsin(matrix_adj),
+          wisconsin(matrix_rel),
           indicies = c('bray', 'euclidean', 'manhattan', 'horn'),
           method = 'spearman')
 
 # Bray-curtis performs well to separate communities along the fire severity gradient
 # Although Euclidean and Kul also are good?!
 
-```
+# NMDS with relative abundance data (2 dimensions)
 
-```{r nmds, include=FALSE}
-
-# NMDS with raw abundance data (2 dimensions)
-
-ord <- metaMDS(matrix,
+ord <- metaMDS(matrix_rel,
                distance = 'bray',
                k = 2)
-ord$stress # stress = 0.18
+ord$stress # stress = 0.117
 stressplot(ord)
 
-# NMDS with abundance data adjusted for trapping effort (2 dimensions)
+# NMDS with relative abundance data (3 dimensions)
 
-set.seed(1)
-ord_adj_2dim <- metaMDS(matrix_adj,
-                        distance = 'bray',
-                        k = 2)
-ord_adj_2dim$stress # stress = 0.18
-stressplot(ord_adj_2dim)
-
-
-
-set.seed(2)
-ord_adj_2dim_2 <- metaMDS(matrix_adj,
-                          distance = 'bray',
-                          k = 2)
-ord_adj_2dim_2$stress # stress = 0.18
-stressplot(ord_adj_2dim_2)
-
-
-procrustes <- procrustes(ord_adj_2dim, ord_adj_2dim_2) # compares ordination solutions
-summary(procrustes)
-plot(procrustes)
-
-# NMDS returns two solutions (local minima) which appear fairly different
-
-
-
-# NMDS with abundance data adjusted for trapping effort (3 dimensions)
-
-set.seed(5)
-ord_adj_3dim <- metaMDS(matrix_adj,
-                        distance = 'bray',
-                        k = 3)
-
-ord_adj_3dim$stress # stress = 0.09
-stressplot(ord_adj_3dim)
-
-# Only one solution with 3 dimensions and stress is sifnificantly lower, so this is probably the best model to use
-
-
+ord2 <- metaMDS(matrix_rel,
+               distance = 'bray',
+               k = 3)
+ord2$stress # stress = 0.066
+stressplot(ord2)
 
 # Scree plot to check stress per number of dimensions
-
-dimcheckMDS(matrix_adj, distance = "bray", k = 10, trymax = 20)
-# Stress is significantly reduced after 3 dimensions
+dimcheckMDS(matrix_rel, distance = "bray", k = 10, trymax = 20)
+# Stress is significantly reduced after 2 dimensions
 
 ```
 
-**NMDS plot showing community composition across the three fire severities:** 
+**NMDS plot showing community structure across the three fire severities:** 
 
 ```{r nmds plot, echo=FALSE}
 
-# 3 dimensions
-
-colors <- c('darkgreen', 'orange', 'red')
+cols <- c('darkgreen', 'orange', 'red')
 
 par(mar = c(4,4,1,1))
 
-plot(ord_adj_3dim, display = 'sites',
-     type = 'n')
+plot(ord, display = 'sites', type = 'n')
 
-points(ord_adj_3dim, display = 'sites',
-       cex = 1.5, pch = 19, col = colors[matrix_adj_df$severity])
+points(ord, display = 'sites',
+       cex = 1.5, pch = 19, col = cols[sevs$severity])
 
-ordiellipse(ord, groups = matrix_df$severity,
-            label = TRUE, col = colors, lwd = 2)
+ordiellipse(ord, groups = sevs$severity,
+            label = TRUE, col = cols, lwd = 2)
 
-text(ord_adj_3dim, display = 'species',
+text(ord, display = 'species',
      cex = 0.6)
 
-title(main = 'NMDS in 3 dimensions')
+title(main = 'NMDS in 2 dimensions')
 
 ```
 
@@ -166,18 +127,18 @@ title(main = 'NMDS in 3 dimensions')
 
 # Attach severity data to species matrix
 
-matrix_adj_sev <- matrix_adj
+matrix_rel
 attach(sevs)
 
 # Compare community similarity across fire severities using ANOSIM
 
-smamm_ano <- anosim(matrix_adj_sev, severity)
+smamm_ano <- anosim(matrix_rel, severity)
 summary(smamm_ano)
 plot(smamm_ano)
 
 # Compare community dispersion across fire severities using betadisper
 
-smamm_dist <- vegdist(matrix_adj_sev)
+smamm_dist <- vegdist(matrix_rel)
 
 smamm_bd <- betadisper(smamm_dist, severity)
 
@@ -196,10 +157,9 @@ anova(smamm_bd)
 # Compare community similarity across fire severities using adonis
 # Adonis is more robust because it is less sensitive to dispersion
 
-smamm_ado <- adonis(matrix_adj_sev ~ severity,
+smamm_ado <- adonis(matrix_rel ~ severity,
                     permuatations = 999,
                     method = 'bray')
-
 smamm_ado
 
 # p = 0.001 --> communities are significantly different between fire severity treatments
@@ -208,24 +168,22 @@ smamm_ado
 
 # Pairwise Adonis
 
-smamm_ado_ph <- pairwise.adonis(matrix_adj_sev, severity)
+smamm_ado_pw <- pairwise.adonis(matrix_rel, severity)
 
-smamm_ado_ph
+smamm_ado_pw
 
 # Adjusted p-value (Bonferroni correction)
-# unb vs mod: 0.216
+# unb vs mod: 0.018
 # unb vs high: 0.003
-# mod vs high: 0.051 (but this is sometime significant based on permutation)
+# mod vs high: 0.336
 
 ```
 
-        pairs Df SumsOfSqs  F.Model        R2 p.value p.adjusted sig
-1  unb vs mod  1 0.2197101 2.463529 0.1334268   0.070      0.210    
-2 unb vs high  1 0.5273956 9.416633 0.3704910   0.001      0.003   *
-3 mod vs high  1 0.3936411 4.196178 0.2077709   0.018      0.054  
-
-- The NMDS plot shows variation in community composition of small mammals, standardized by trapping effort. NMDS was performed on Bray-Curtis distances in three dimensions (stress = 0.09). Each circle represents a site, with the standard deviation of the centroids for each fire severity represented as color-coded ellipses (n = 9 for each). Community composition was significantly different between fire severity treatments (Adonis F(2,24) = 4.39, R^2^ = 0.268, p = 0.003). Post-hoc analysis by pairwise Adonis showed that community composition in unburned sites and high severity sites was significantly different (pairwise p = 0.006).
-
+- NMDS in two dimensions using relative abundance species matrix and Wisconsin correction on Bray-Curtis distances
+- Appears to be fewer sites because some of them exactly overlap
+- Adonis F=4.739, p=0.002
+- Pairwise Adonis unb vs. mod p=0.018, unb vs high p=0.003 (Bonferroni correction)
+- Considered using ANOSIM instead of Adonis, but Adonis is more robust because it is less sensitive to dispersion (also used betadisper to determine that dispersion was similar across treatments in order to satisfy assumptions of Adonis)
 - Species codes:
     - SPBE = California ground squirrel
     - GLSA = northern flying squirrel
@@ -239,52 +197,9 @@ smamm_ado_ph
     - REME = western harvest mouse
     - SOTR = Trowbridge's shrew
 
-
-- Considered using ANOSIM instead of Adonis, but Adonis is more robust because it is less sensitive to dispersion (also used betadisper to determine that dispersion was similar across treatments in order to satisfy assumptions of Adonis)
-
-- PairwiseAdonis for moderate severity vs. high severity gave borderline p-value (p < 0.05 or p > 0.5 based on permutation)
-
-- Ordination looked similar for both raw data and data adjusted for trapping effort
-
-- Used three dimensions for NMDS in order to reduce stress (according to scree plot) and to avoid local minima (2 dimension nmds returned two solutions)
-
 <br>
 
-**Alternate NMDS plots using 2 dimensions (two local minima):**
-
-```{r}
-
-# 2 dimensions - option 1
-
-par(mar = c(4,4,1,1))
-plot(ord_adj_2dim, display = 'species',
-     type = 'n')
-points(ord_adj_2dim, display = 'sites',
-       cex = 1.5, pch = 19, col = colors[matrix_adj_df$severity])
-ordiellipse(ord_adj_2dim, groups = matrix_adj_df$severity,
-            label = FALSE, col = colors, lwd = 2)
-text(ord_adj_2dim, display = 'species',
-     cex = 0.8)
-title(main = 'NMDS in 2 dimensions')
-
-# 2 dimensions - option 2
-
-par(mar = c(4,4,1,1))
-plot(ord_adj_2dim_2, display = 'species',
-     type = 'n')
-points(ord_adj_2dim_2, display = 'sites',
-       cex = 1.5, pch = 19, col = colors[matrix_adj_df$severity])
-ordiellipse(ord_adj_2dim_2, groups = matrix_adj_df$severity,
-            label = FALSE, col = colors, lwd = 2)
-text(ord_adj_2dim_2, display = 'species',
-     cex = 0.8)
-title(main = 'NMDS in 2 dimensions')
-
-```
-
-<br>
-
-### Habitat drivers of community composition
+### Habitat drivers
 
 **Individual habitat drivers of small mammal communities:**
 
@@ -292,25 +207,20 @@ title(main = 'NMDS in 2 dimensions')
 
 # Fit individual environmental variables
 
-fit <- envfit(ord_adj_3dim, habitat_metrics[,3:16], permutations = 1000)
+fit <- envfit(ord, habitat_metrics[,3:16], permutations = 1000)
 
 # NMDS plot with arrows for environmental variables
 
 par(mar = c(4,4,1,1))
-plot(ord_adj_3dim, display = 'sites',
-     type = 'n')
-points(ord_adj_3dim, display = 'sites',
-       cex = 1.5, pch = 19, col = colors[matrix_adj_df$severity])
-ordiellipse(ord_adj_3dim, groups = matrix_adj_df$severity, # by default plots ellipse with std error around centroids
-            label = FALSE, col = colors, lwd = 2)
+plot(ord, display = 'sites', type = 'n')
+points(ord, display = 'sites',
+       cex = 1.5, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity, # shows se around centroids
+            label = FALSE, col = cols, lwd = 2)
 plot(fit,
      col = 'black', lwd = 3)
 
 ```
-
-- The NMDS plot shows variation in community composition of small mammals, standardized by trapping effort. NMDS was performed on on Bray-Curtis distances in three dimensions (stress = 0.09). Each circle represents a site, with the standard deviation of the centroids for each fire severity represented as color-coded ellipses (n = 9 for each). Arrows represent the relative contributions of several possible habitat variables. Community composition was significantly different between fire severity treatments (Adonis F(2,24) = 4.39, R^2^ = 0.268, p = 0.003). Post-hoc analysis by pairwise Adonis showed that community composition in unburned sites and high severity sites was significantly different (pairwise p = 0.006).
-
-- Appears to be fewer sites because some of them exactly overlap
 
 - Habitat variables:
     - *avg_severity* - mean severity of pixels within the site, based on MTBS fire severity data (0-3 = unburned-high severity)
@@ -336,19 +246,19 @@ plot(fit,
 
 # Fit environmental variables
 
-fit2 <- envfit(ord_adj_3dim, habitat_metrics[,17:19], permutations = 1000)
+fit2 <- envfit(ord, habitat_metrics[,17:19], permutations = 1000)
 
 # NMDS plot with arrows for environmental variables
 
 par(mar = c(4,4,1,1))
-plot(ord_adj_3dim, xlim = c(-1.8,1.8), display = 'sites', type = 'n')
-points(ord_adj_3dim, display = 'sites',
-       cex = 1.5, pch = 19, col = colors[matrix_adj_df$severity])
-ordiellipse(ord_adj_3dim, groups = matrix_adj_df$severity, # by default plots ellipse with std error around centroids
-            label = FALSE, col = colors, lwd = 2)
+plot(ord, xlim = c(-1.8,1.8), display = 'sites', type = 'n')
+points(ord, display = 'sites',
+       cex = 1.5, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity, # by default plots ellipse with std error around centroids
+            label = FALSE, col = cols, lwd = 2)
 plot(fit2,
      col = 'black', lwd = 3)
-text(ord_adj_3dim, display = 'species',
+text(ord, display = 'species',
      cex = 0.7, col = 'grey30')
 
 ```
@@ -370,21 +280,19 @@ model_vars <- habitat_metrics %>%
 
 # Fit environmental variables
 
-fit3 <- envfit(ord_adj_3dim, model_vars[,3:8], permutations = 1000)
-
-fit3_2dim <- envfit(ord_adj_2dim, model_vars[,3:8], permutations = 1000)
+fit3 <- envfit(ord, model_vars[,3:8], permutations = 1000)
 
 # NMDS plot with arrows for environmental variables
 
 par(mar = c(4,4,1,1))
-plot(ord_adj_3dim, xlim = c(-1.8,1.2), diplay = 'sites', type = 'n')
-points(ord_adj_3dim, display = 'sites',
-       cex = 1, pch = 19, col = colors[matrix_adj_df$severity])
-ordiellipse(ord_adj_3dim, groups = matrix_adj_df$severity, # by default plots ellipse with std error around centroids
-            label = FALSE, col = colors, lwd = 2)
+plot(ord, xlim = c(-1.8,1.2), diplay = 'sites', type = 'n')
+points(ord, display = 'sites',
+       cex = 1, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity, # by default plots ellipse with std error around centroids
+            label = FALSE, col = cols, lwd = 2)
 plot(fit3,
      col = 'black', lwd = 3, cex = 0.8)
-text(ord_adj_3dim, display = 'species',
+text(ord, display = 'species',
      cex = 0.7, col = 'grey30')
 
 ```
@@ -393,49 +301,39 @@ text(ord_adj_3dim, display = 'species',
 
 **Clean NMDS plots with ggplot:**
 
-*NMDS in 3 dimensions*
-
 ```{r, include=FALSE}
 
 # Ordination plot with ggplot
 
 # Data frames with point and vector information
 
-NMDS <- fortify(ord_adj_3dim) %>% 
+site_points <- fortify(ord) %>% 
   filter(Score == 'sites') %>% 
   full_join(sevs, by = c('Label' = 'site')) %>% 
   dplyr::rename(group = severity)
 
 
-spp_points <- fortify(ord_adj_3dim) %>% 
-  filter(Score == 'species') %>% 
-  mutate(Label = as.character(Label),
-         Label2 = case_when(
-           Label == 'SPBE' ~ 'OTBE',
-           Label == 'TAAM' ~ 'NEAM',
-           Label == 'TAQU' ~ 'NEQU',
-           Label == 'TASE' ~ 'NETA',
-           TRUE ~ Label
-           ))
+spp_points <- fortify(ord) %>% 
+  filter(Score == 'species')
 
 vectors <- fortify(fit3) %>% 
-  mutate(xend = NMDS1*2.75,
-         yend = NMDS2*2.75,
+  mutate(xend = NMDS1*2,
+         yend = NMDS2*2,
          xlab = case_when(
-           Label == 'tree_bm' ~ xend - 0.4,
-           Label == 'shrub_bm' ~ xend + 0.45,
-           Label == 'forb_bm' ~ xend + 0.4,
-           Label == 'veg_cover' ~ xend + 0.55,
-           Label == 'litter_cover' ~ xend - 0.4,
-           Label == 'cwd_volume' ~ xend + 0.4
+           Label == 'tree_bm' ~ xend,
+           Label == 'shrub_bm' ~ xend,
+           Label == 'forb_bm' ~ xend,
+           Label == 'veg_cover' ~ xend,
+           Label == 'litter_cover' ~ xend,
+           Label == 'cwd_volume' ~ xend
          ),
          ylab = case_when(
-           Label == 'tree_bm' ~ yend + 0.13,
-           Label == 'shrub_bm' ~ yend + 0.1,
-           Label == 'forb_bm' ~ yend + 0.1,
-           Label == 'veg_cover' ~ yend + 0.05,
-           Label == 'litter_cover' ~ yend + 0.02,
-           Label == 'cwd_volume' ~ yend + 0.1
+           Label == 'tree_bm' ~ yend,
+           Label == 'shrub_bm' ~ yend,
+           Label == 'forb_bm' ~ yend,
+           Label == 'veg_cover' ~ yend,
+           Label == 'litter_cover' ~ yend,
+           Label == 'cwd_volume' ~ yend
          ),
          lab = case_when(
            Label == 'tree_bm' ~ 'Tree biomass',
@@ -449,7 +347,7 @@ vectors <- fortify(fit3) %>%
 # Data frame with ellipse information
 
 plot.new()
-ord <- ordiellipse(ord_adj_3dim, groups = sevs$severity)
+ord_el <- ordiellipse(ord, groups = sevs$severity)
 
 veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100) 
   {
@@ -460,9 +358,9 @@ veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100)
 
 df_ell <- data.frame()
 
-for(g in levels(NMDS$group)){
-  df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
-                  veganCovEllipse(ord[[g]]$cov,ord[[g]]$center,ord[[g]]$scale)))
+for(g in levels(site_points$group)){
+  df_ell <- rbind(df_ell, cbind(as.data.frame(with(site_points[site_points$group==g,],
+                  veganCovEllipse(ord_el[[g]]$cov,ord_el[[g]]$center,ord_el[[g]]$scale)))
                                 ,group=g))
 }
 
@@ -470,13 +368,11 @@ for(g in levels(NMDS$group)){
 
 ```{r}
 
-# ggplot in 3 dimensions
-
 ggplot() +
   geom_path(data = df_ell,
             aes(x = NMDS1, y = NMDS2, color = group),
             size = 1) +
-  geom_point(data = NMDS,
+  geom_point(data = site_points,
              aes(x = NMDS1, y = NMDS2, color = group),
              size = 2) +
   # geom_text(data = spp_points,
@@ -496,10 +392,10 @@ ggplot() +
   # geom_text(data = vectors[5,],
   #           aes(x = xlab, y = ylab, label = lab),
   #           size = 4, fontface = 'bold') +
-  geom_label(data = NMDS, aes(x = -1.5, y = 1.1, label = 'NMDS in 3 dim\n(2 dim displayed)\nstress = 0.09')) +
+  geom_label(data=site_points, aes(x=0.75,y=0.6,label='NMDS in 2 dim\nstress = 0.12')) +
   scale_color_manual(values = c('darkgreen', 'orange', 'red')) +
-  scale_x_continuous(limits = c(-1.9,1.7)) +
-  scale_y_continuous(limits = c(-0.7,1.3)) +
+  scale_x_continuous(limits = c(-0.7,1)) +
+  scale_y_continuous(limits = c(-0.5,0.7)) +
   theme_classic() +
   theme(panel.border = element_rect(fill = NA),
         axis.text.x = element_blank(),
@@ -512,132 +408,6 @@ ggsave('figs/fig5b.png', plot = last_plot(),
 
 ```
 
-<br>
-
-*NMDS in 2 dimensions*
-
-```{r, include=FALSE}
-
-# SAME GRAPH BUT ON TWO DIMENSIONS
-
-# Ordination plot with ggplot
-
-# With ggplot
-
-# Data frames with point and vector information
-
-NMDS <- fortify(ord_adj_2dim) %>% 
-  filter(Score == 'sites') %>% 
-  full_join(sevs, by = c('Label' = 'site')) %>% 
-  dplyr::rename(group = severity)
-
-
-spp_points <- fortify(ord_adj_2dim) %>% 
-  filter(Score == 'species') %>% 
-  mutate(Label = as.character(Label),
-         Label2 = case_when(
-           Label == 'SPBE' ~ 'OTBE',
-           Label == 'TAAM' ~ 'NEAM',
-           Label == 'TAQU' ~ 'NEQU',
-           Label == 'TASE' ~ 'NETA',
-           TRUE ~ Label
-           ))
-
-vectors <- fortify(fit3_2dim) %>% 
-  mutate(xend = NMDS1*2.75,
-         yend = NMDS2*2.75,
-         xlab = case_when(
-           Label == 'tree_bm' ~ xend - 0.42,
-           Label == 'shrub_bm' ~ xend + 0.5,
-           Label == 'forb_bm' ~ xend + 0.4,
-           Label == 'veg_cover' ~ xend + 0.57,
-           Label == 'litter_cover' ~ xend - 0.43,
-           Label == 'cwd_volume' ~ xend -0.43
-         ),
-         ylab = case_when(
-           Label == 'tree_bm' ~ yend + 0.1,
-           Label == 'shrub_bm' ~ yend + 0.09,
-           Label == 'forb_bm' ~ yend + 0.1,
-           Label == 'veg_cover' ~ yend + 0.02,
-           Label == 'litter_cover' ~ yend + 0.07,
-           Label == 'cwd_volume' ~ yend + 0.1
-         ),
-         lab = case_when(
-           Label == 'tree_bm' ~ 'Tree biomass',
-           Label == 'shrub_bm' ~ 'Shrub biomass',
-           Label == 'forb_bm' ~ 'Forb biomass',
-           Label == 'veg_cover' ~ 'Understory cover',
-           Label == 'litter_cover' ~ 'Litter cover',
-           Label == 'cwd_volume' ~ 'CWD volume'
-         ))
-
-# Data frame with ellipse information
-
-plot.new()
-ord <- ordiellipse(ord_adj_2dim, groups = sevs$severity)
-
-veganCovEllipse<-function (cov, center = c(0, 0), scale = 1, npoints = 100) 
-  {
-    theta <- (0:npoints) * 2 * pi/npoints
-    Circle <- cbind(cos(theta), sin(theta))
-    t(center + scale * t(Circle %*% chol(cov)))
-  }
-
-df_ell <- data.frame()
-
-for(g in levels(NMDS$group)){
-  df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
-                  veganCovEllipse(ord[[g]]$cov,ord[[g]]$center,ord[[g]]$scale)))
-                                ,group=g))
-}
-
-```
-
-
-```{r}
-
-# ggplot in 2 dimensions
-
-ggplot() +
-  geom_path(data = df_ell,
-            aes(x = NMDS1, y = NMDS2, color = group),
-            size = 1) +
-  geom_point(data = NMDS,
-             aes(x = NMDS1, y = NMDS2, color = group),
-             size = 2) +
-  # geom_text(data = spp_points,
-  #           aes(x = NMDS1, y = NMDS2, label = Label2),
-  #           size = 3, color = 'grey40') +
-  geom_segment(data = vectors[c(3,4,6,
-                                1,2,5),],
-               aes(x = 0, y = 0, xend = xend, yend = yend),
-               arrow = arrow(length = unit(0.02, 'npc'), type = 'closed'),
-               size = 0.7) +
-  # geom_segment(data = vectors[5,],
-  #              aes(x = 0, y = 0, xend = xend, yend = yend),
-  #              arrow = arrow(length = unit(0.03, 'npc'), type = 'closed'),
-  #              size = 0.9) +
-  geom_text(data = vectors[c(3,4,6,
-                             1,2,5),],
-            aes(x = xlab, y = ylab, label = lab),
-            size = 4) +
-  # geom_text(data = vectors[5,],
-  #           aes(x = xlab, y = ylab, label = lab),
-  #           size = 4, fontface = 'bold') +
-  scale_color_manual(values = c('darkgreen', 'orange', 'red')) +
-  scale_x_continuous(limits = c(-1.8, 1.7)) +
-  scale_y_continuous(breaks = c(0, 1)) +
-  theme_classic() +
-  theme(panel.border = element_rect(fill = NA),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        legend.position = 'none') +
-  coord_fixed()
-
-```
-
 ```{r eval=FALSE}
-
 rmarkdown::render('code/08_nmds.Rmd', output_file = '../docs/08_nmds.html')
-
 ```

@@ -1,7 +1,6 @@
 ---
 title: "Vegetation Metrics"
 author: "Kate Culhane"
-date: "January 7, 2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -9,20 +8,19 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(eval = FALSE,
-                      fig.width=5, fig.height=3)
+knitr::opts_chunk$set(eval=FALSE, include=FALSE)
 ```
 
 <br>
 
 ```{r packages and data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(vegan)
 
-# Load necessary data
+# Load data
 
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -39,20 +37,16 @@ tree <- read_csv('raw_data/field_data/veg_transect_tree.csv')
 
 ```
 
-### Calculating vegetation metrics
+### Vegetation metrics
 
 - **Tree biomass:** total biomass of all live adult trees for both transects, divided by the transect area (kg/m^2^)
-
 - **Shrub biomass:** total biomass of all shrubs for both transects, divided by the transect area (kg/m^2^)
-
 - **Grass biomass:** total biomass of all grass for both transects, divided by the transect area (kg/m^2^)
-
 - **Forb biomass:** total biomass of all forbs for both transects, divided by the transect area (kg/m^2^)
 
 ```{r biomass}
 
 # Tree biomass
-
 tree_bm <- tree_biomass %>%
   filter(State != 'D') %>% 
   group_by(Site) %>% 
@@ -60,7 +54,6 @@ tree_bm <- tree_biomass %>%
   mutate(tree_bm = biomass/1500) # biomass per meter squared (total area = 1500 m^2 = 2 transects X 50 m X 15 m)
 
 # Shrub biomass
-
 shrub_bm <- shrub_biomass %>% 
   filter(Shrub_or_Tree == 'Shrub') %>% 
   group_by(Site) %>% 
@@ -68,7 +61,6 @@ shrub_bm <- shrub_biomass %>%
   mutate(shrub_bm = biomass/500) # biomass per meter squared (total area = 1500 m2 = 2 transects X 50 m X 5 m)
 
 # Grass biomass
-
 grass_bm <- cover_biomass %>% 
   filter(Cover_type == 'Grass') %>% 
   group_by(Site) %>% 
@@ -76,7 +68,6 @@ grass_bm <- cover_biomass %>%
   mutate(grass_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
 
 # Forb biomass
-
 forb_bm <- cover_biomass %>% 
   filter(Cover_type == 'Forbs' | Cover_type == 'Dominant forb') %>% 
   group_by(Site) %>% 
@@ -86,20 +77,17 @@ forb_bm <- cover_biomass %>%
 ```
 
 - **Tree density:** number of adult trees (live + dead) at both trasects, divided by the transect area (number/m^2^)
-
 - **Tree survival:** percent live trees (%)
 
 ```{r trees}
 
 # Tree density
-
 tree_density <- tree %>% 
   group_by(Site) %>% 
   summarize(n = length(ID)) %>% 
   mutate(tree_density = n/1500) # density per meter squared (total area = 1500 m2 = 2 transects X 50 m X 15 m)
 
 # Tree survival
-  
 tree_survival <- tree %>%
   group_by(Site) %>% 
   mutate(n = length(ID)) %>% 
@@ -113,13 +101,11 @@ tree_survival <- tree %>%
 ```
 
 - **Vegetation cover:** total percent vegetation cover (all species/life-forms) across all quadrats (both transects) (%)
-
 - **Litter cover:** total percent litter cover (soft loose litter, woody litter, soft rooted litter) across all quadrats (both transects) (%)
 
 ```{r cover}
 
 # Vegetation cover
-
 veg_cover <- cover %>% 
   filter(Type == 'Shrub' | Type == 'Tree' | Type == 'Dominant forb' | Type == 'Forbs' | Type == 'Grass') %>% # filter for vegetation only
   group_by(Site, Transect, Meter) %>% 
@@ -128,7 +114,6 @@ veg_cover <- cover %>%
   summarize(veg_cover = mean(quad_cover))
 
 # Litter cover
-
 litter_cover <- cover %>% 
   filter(Type == 'Soft loose litter' |
            Type == 'Woody litter' |
@@ -145,7 +130,6 @@ litter_cover <- cover %>%
 ```{r CWD}
 
 # Coarse woody debris
-
 cwd_volume <- cwd %>%
   mutate(ind_volume = ((pi/8)*(`Diameter small_cm` + `Diameter large_cm`)*Length_m)/10000) %>% # volume of each piece of CWD in m^3
   mutate(ind_vol_weighted = ind_volume/Length_m) %>% # volume of CWD, weighted by the length (to use in calculation of volume/area)
@@ -159,15 +143,12 @@ cwd_volume <- cwd %>%
 ```
 
 - **Tree diversity:** Shannon diversity of all living adult trees (H)
-
 - **Shrub diversity:** Shannon diversity of all living shrubs (H)
-
 - **Forb diversity:** Shannon diversity of all living forbs (H)
 
 ```{r diversity}
 
 # Tree diversity
-
 tree_spp <- tree %>%
   filter(State != 'D', # filter out dead individuals
          Species != 'Pinaceae') %>%  # filter out unknown conifers (3 total)
@@ -189,7 +170,6 @@ tree_H <- diversity(tree_matrix)
 tree_diversity <- data_frame(site = tree_spp$Site, tree_H)
 
 # Shrub diversity
-
 shrub_spp <- shrub %>% 
   filter(Shrub_or_Tree == 'Shrub',
          Species != 'Unknown') %>% 
@@ -207,7 +187,6 @@ shrub_H <- diversity(shrub_matrix)
 shrub_diversity <- data_frame(site = shrub_spp$Site, shrub_H)
 
 # Forb diversity
-
 forb_spp <- cover %>% 
   filter(Type == 'Dominant forb',
          Species != 'UNKNOWN') %>% 
@@ -233,7 +212,6 @@ forb_diversity <- data_frame(site = forb_spp$Site, forb_H)
 ```{r combined variables}
 
 # Data frame with all vegetation metrics
-
 veg_metrics <- full_join(tree_bm, shrub_bm, by = 'Site') %>% # tree_bm, shrub_bm
   full_join(grass_bm, by = 'Site') %>% # grass_bm
   full_join(forb_bm, by = 'Site') %>% # forb_bm
@@ -255,7 +233,5 @@ write_csv(veg_metrics,'output_data/veg_metrics.csv', col_names = TRUE)
 ```
 
 ```{r eval=FALSE}
-
 rmarkdown::render('code/05_vegetation_metrics.Rmd', output_file = '../docs/05_vegetation_metrics.html')
-
 ```

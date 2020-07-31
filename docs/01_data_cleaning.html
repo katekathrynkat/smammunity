@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html>
 
 <head>
 
 <meta charset="utf-8" />
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
@@ -332,6 +331,7 @@ summary {
   border: none;
   display: inline-block;
   border-radius: 4px;
+  background-color: transparent;
 }
 
 .tabset-dropdown > .nav-tabs.nav-tabs-open > li {
@@ -443,6 +443,15 @@ summary {
 </ul></li>
 </ul>
 <p>Clean data exported to raw_data/field_data/smamms_clean.csv.</p>
+<p><br></p>
+<p><strong>Summary of clean data for analyses</strong></p>
+<p><em>Dimensions of data frame:</em></p>
+<pre><code>## [1] 987  16</code></pre>
+<p><em>Number of unique animals:</em></p>
+<pre><code>## [1] 544</code></pre>
+<p><em>Number of non-captures:</em></p>
+<pre><code>## [1] 478</code></pre>
+<p><br></p>
 <p><strong>Notes:</strong></p>
 <ul>
 <li>Tag numbers left in left.tag and right.tag columns have not been updated; indID represents the correct ID.</li>

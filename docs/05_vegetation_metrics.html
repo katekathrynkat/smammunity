@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html>
 
 <head>
 
 <meta charset="utf-8" />
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="generator" content="pandoc" />
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
 <meta name="author" content="Kate Culhane" />
 
-<meta name="date" content="2019-01-07" />
 
 <title>Vegetation Metrics</title>
 
@@ -332,6 +330,7 @@ summary {
   border: none;
   display: inline-block;
   border-radius: 4px;
+  background-color: transparent;
 }
 
 .tabset-dropdown > .nav-tabs.nav-tabs-open > li {
@@ -365,215 +364,27 @@ summary {
 
 <h1 class="title toc-ignore">Vegetation Metrics</h1>
 <h4 class="author">Kate Culhane</h4>
-<h4 class="date">January 7, 2019</h4>
 
 </div>
 
 
 <p><br></p>
-<pre class="r"><code># Load necessary packages
-
-library(tidyverse)
-library(vegan)
-
-# Load necessary data
-
-site_meta &lt;- read_csv(&#39;raw_data/field_data/site_metadata.csv&#39;) %&gt;% 
-  mutate(severity = factor(severity, levels = c(&#39;unb&#39;, &#39;mod&#39;, &#39;high&#39;)))
-
-cover_biomass &lt;- read_csv(&#39;raw_data/field_data/veg_biomass_cover.csv&#39;)
-cwd_biomass &lt;- read_csv(&#39;raw_data/field_data/veg_biomass_cwd.csv&#39;)
-shrub_biomass &lt;- read_csv(&#39;raw_data/field_data/veg_biomass_shrub.csv&#39;)
-tree_biomass &lt;- read_csv(&#39;raw_data/field_data/veg_biomass_tree.csv&#39;)
-
-cover &lt;- read_csv(&#39;raw_data/field_data/veg_transect_cover.csv&#39;)
-cwd &lt;- read_csv(&#39;raw_data/field_data/veg_transect_cwd.csv&#39;)
-shrub &lt;- read_csv(&#39;raw_data/field_data/veg_transect_shrub.csv&#39;)
-tree &lt;- read_csv(&#39;raw_data/field_data/veg_transect_tree.csv&#39;)</code></pre>
-<div id="calculating-vegetation-metrics" class="section level3">
-<h3>Calculating vegetation metrics</h3>
+<div id="vegetation-metrics" class="section level3">
+<h3>Vegetation metrics</h3>
 <ul>
-<li><p><strong>Tree biomass:</strong> total biomass of all live adult trees for both transects, divided by the transect area (kg/m<span class="math inline">\(^2\)</span>)</p></li>
-<li><p><strong>Shrub biomass:</strong> total biomass of all shrubs for both transects, divided by the transect area (kg/m<span class="math inline">\(^2\)</span>)</p></li>
-<li><p><strong>Grass biomass:</strong> total biomass of all grass for both transects, divided by the transect area (kg/m<span class="math inline">\(^2\)</span>)</p></li>
-<li><p><strong>Forb biomass:</strong> total biomass of all forbs for both transects, divided by the transect area (kg/m<span class="math inline">\(^2\)</span>)</p></li>
-</ul>
-<pre class="r"><code># Tree biomass
-
-tree_bm &lt;- tree_biomass %&gt;%
-  filter(State != &#39;D&#39;) %&gt;% 
-  group_by(Site) %&gt;% 
-  summarize(biomass = sum(Biomass)) %&gt;% 
-  mutate(tree_bm = biomass/1500) # biomass per meter squared (total area = 1500 m^2 = 2 transects X 50 m X 15 m)
-
-# Shrub biomass
-
-shrub_bm &lt;- shrub_biomass %&gt;% 
-  filter(Shrub_or_Tree == &#39;Shrub&#39;) %&gt;% 
-  group_by(Site) %&gt;% 
-  summarize(biomass = sum(biomass)) %&gt;% 
-  mutate(shrub_bm = biomass/500) # biomass per meter squared (total area = 1500 m2 = 2 transects X 50 m X 5 m)
-
-# Grass biomass
-
-grass_bm &lt;- cover_biomass %&gt;% 
-  filter(Cover_type == &#39;Grass&#39;) %&gt;% 
-  group_by(Site) %&gt;% 
-  summarize(biomass = sum(Live.Weight_mean.Avg.Ratio.L)) %&gt;%
-  mutate(grass_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
-
-# Forb biomass
-
-forb_bm &lt;- cover_biomass %&gt;% 
-  filter(Cover_type == &#39;Forbs&#39; | Cover_type == &#39;Dominant forb&#39;) %&gt;% 
-  group_by(Site) %&gt;% 
-  summarize(biomass = sum(Live.Weight_mean.Avg.Ratio.L, na.rm = TRUE)) %&gt;%
-  mutate(forb_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)</code></pre>
-<ul>
-<li><p><strong>Tree density:</strong> number of adult trees (live + dead) at both trasects, divided by the transect area (number/m<span class="math inline">\(^2\)</span>)</p></li>
+<li><p><strong>Tree biomass:</strong> total biomass of all live adult trees for both transects, divided by the transect area (kg/m<sup>2</sup>)</p></li>
+<li><p><strong>Shrub biomass:</strong> total biomass of all shrubs for both transects, divided by the transect area (kg/m<sup>2</sup>)</p></li>
+<li><p><strong>Grass biomass:</strong> total biomass of all grass for both transects, divided by the transect area (kg/m<sup>2</sup>)</p></li>
+<li><p><strong>Forb biomass:</strong> total biomass of all forbs for both transects, divided by the transect area (kg/m<sup>2</sup>)</p></li>
+<li><p><strong>Tree density:</strong> number of adult trees (live + dead) at both trasects, divided by the transect area (number/m<sup>2</sup>)</p></li>
 <li><p><strong>Tree survival:</strong> percent live trees (%)</p></li>
-</ul>
-<pre class="r"><code># Tree density
-
-tree_density &lt;- tree %&gt;% 
-  group_by(Site) %&gt;% 
-  summarize(n = length(ID)) %&gt;% 
-  mutate(tree_density = n/1500) # density per meter squared (total area = 1500 m2 = 2 transects X 50 m X 15 m)
-
-# Tree survival
-  
-tree_survival &lt;- tree %&gt;%
-  group_by(Site) %&gt;% 
-  mutate(n = length(ID)) %&gt;% 
-  filter(State != &#39;D&#39;) %&gt;% 
-  group_by(Site, n) %&gt;% 
-  summarize(live = length(ID)) %&gt;% 
-  mutate(tree_survival = live/n) %&gt;% 
-  full_join(site_meta, by = c(&#39;Site&#39; = &#39;site&#39;)) %&gt;% 
-  mutate(tree_survival = replace_na(tree_survival, 0))</code></pre>
-<ul>
 <li><p><strong>Vegetation cover:</strong> total percent vegetation cover (all species/life-forms) across all quadrats (both transects) (%)</p></li>
 <li><p><strong>Litter cover:</strong> total percent litter cover (soft loose litter, woody litter, soft rooted litter) across all quadrats (both transects) (%)</p></li>
-</ul>
-<pre class="r"><code># Vegetation cover
-
-veg_cover &lt;- cover %&gt;% 
-  filter(Type == &#39;Shrub&#39; | Type == &#39;Tree&#39; | Type == &#39;Dominant forb&#39; | Type == &#39;Forbs&#39; | Type == &#39;Grass&#39;) %&gt;% # filter for vegetation only
-  group_by(Site, Transect, Meter) %&gt;% 
-  summarize(quad_cover = sum(cover)) %&gt;% # quad_cover is the total vegetation cover at each quadrat
-  group_by(Site) %&gt;% 
-  summarize(veg_cover = mean(quad_cover))
-
-# Litter cover
-
-litter_cover &lt;- cover %&gt;% 
-  filter(Type == &#39;Soft loose litter&#39; |
-           Type == &#39;Woody litter&#39; |
-           Type == &#39;Soft rooted litter&#39;) %&gt;% 
-  group_by(Site, Transect, Meter) %&gt;% 
-  summarize(quad_cover = sum(cover, na.rm = TRUE)) %&gt;% # quad_cover is the total litter cover at each quadrat
-  group_by(Site) %&gt;% 
-  summarize(litter_cover = mean(quad_cover))</code></pre>
-<ul>
-<li><strong>Coarse woody debris:</strong> total volume (calculated from Waddell, 2002) (m<span class="math inline">\(^3\)</span>/m<span class="math inline">\(^2\)</span>)</li>
-</ul>
-<pre class="r"><code># Coarse woody debris
-
-cwd_volume &lt;- cwd %&gt;%
-  mutate(ind_volume = ((pi/8)*(`Diameter small_cm` + `Diameter large_cm`)*Length_m)/10000) %&gt;% # volume of each piece of CWD in m^3
-  mutate(ind_vol_weighted = ind_volume/Length_m) %&gt;% # volume of CWD, weighted by the length (to use in calculation of volume/area)
-  group_by(Site, Transect) %&gt;% 
-  summarize(sum = (sum(ind_vol_weighted))) %&gt;% # sum of ind_vol_weighted (m^3/m)
-  mutate(cwd_volume = (pi/2*50)*sum) %&gt;% # volume density per transect (m^3/m^2)
-  group_by(Site) %&gt;% 
-  summarize(cwd_volume = mean(cwd_volume, na.rm = TRUE)) %&gt;%  # avg. volume density at each site (m^3/m^2)
-  mutate(cwd_volume = replace_na(cwd_volume, 0)) # sites with NAs had no CWD</code></pre>
-<ul>
+<li><p><strong>Coarse woody debris:</strong> total volume (calculated from Waddell, 2002) (m<sup>3</sup>/m<sup>2</sup>)</p></li>
 <li><p><strong>Tree diversity:</strong> Shannon diversity of all living adult trees (H)</p></li>
 <li><p><strong>Shrub diversity:</strong> Shannon diversity of all living shrubs (H)</p></li>
 <li><p><strong>Forb diversity:</strong> Shannon diversity of all living forbs (H)</p></li>
 </ul>
-<pre class="r"><code># Tree diversity
-
-tree_spp &lt;- tree %&gt;%
-  filter(State != &#39;D&#39;, # filter out dead individuals
-         Species != &#39;Pinaceae&#39;) %&gt;%  # filter out unknown conifers (3 total)
-  mutate(species = case_when( # combine yellow pines into one &#39;species&#39;
-    Species == &#39;Pinus jeffreyi&#39; | Species == &#39;Pinus ponderosa&#39; | Species == &#39;Pinus sp.&#39; ~ &#39;Pinus sp.&#39;,
-    TRUE ~ Species
-  )) %&gt;% 
-  group_by(Site, species) %&gt;% 
-  summarize(n = length(ID)) %&gt;% 
-  spread(key = species, value = n) %&gt;% 
-  ungroup() %&gt;% 
-  replace(., is.na(.), 0)
-
-tree_matrix &lt;- as.matrix(tree_spp[-1])
-rownames(tree_matrix) &lt;- tree_spp$Site
-
-tree_H &lt;- diversity(tree_matrix)
-
-tree_diversity &lt;- data_frame(site = tree_spp$Site, tree_H)
-
-# Shrub diversity
-
-shrub_spp &lt;- shrub %&gt;% 
-  filter(Shrub_or_Tree == &#39;Shrub&#39;,
-         Species != &#39;Unknown&#39;) %&gt;% 
-  group_by(Site, Species) %&gt;% 
-  summarize(n = length(Species)) %&gt;% 
-  spread(key = Species, value = n) %&gt;% 
-  ungroup() %&gt;% 
-  replace(., is.na(.), 0)
-
-shrub_matrix &lt;- as.matrix(shrub_spp[-1])
-rownames(shrub_matrix) &lt;- shrub_spp$Site
-
-shrub_H &lt;- diversity(shrub_matrix)
-
-shrub_diversity &lt;- data_frame(site = shrub_spp$Site, shrub_H)
-
-# Forb diversity
-
-forb_spp &lt;- cover %&gt;% 
-  filter(Type == &#39;Dominant forb&#39;,
-         Species != &#39;UNKNOWN&#39;) %&gt;% 
-  group_by(Site, Transect, Meter) %&gt;% 
-  filter(cover == max(cover), # only keep the highest cover forb in each quadrat
-         Avg_height_cm == max(Avg_height_cm), # only keep the tallest forb in each quadrat (by avg height)
-         Max_height_cm == max(Max_height_cm)) %&gt;% # only keep the tallest forb in each quadrat (by max height)
-  group_by(Site, Species) %&gt;% 
-  summarize(n = length(Species)) %&gt;% 
-  spread(key = Species, value = n) %&gt;% 
-  ungroup() %&gt;% 
-  replace(., is.na(.), 0)
-
-forb_matrix &lt;- as.matrix(forb_spp[-1])
-rownames(forb_matrix) &lt;- forb_spp$Site
-
-forb_H &lt;- diversity(forb_matrix)
-
-forb_diversity &lt;- data_frame(site = forb_spp$Site, forb_H)</code></pre>
-<pre class="r"><code># Data frame with all vegetation metrics
-
-veg_metrics &lt;- full_join(tree_bm, shrub_bm, by = &#39;Site&#39;) %&gt;% # tree_bm, shrub_bm
-  full_join(grass_bm, by = &#39;Site&#39;) %&gt;% # grass_bm
-  full_join(forb_bm, by = &#39;Site&#39;) %&gt;% # forb_bm
-  full_join(tree_density, by = &#39;Site&#39;) %&gt;% # tree_density
-  full_join(tree_survival, by = &#39;Site&#39;) %&gt;% # tree_survival
-  full_join(veg_cover, by = &#39;Site&#39;) %&gt;% # veg_cover
-  full_join(litter_cover, by = &#39;Site&#39;) %&gt;% # litter_cover
-  full_join(cwd_volume, by = &#39;Site&#39;) %&gt;% # cwd_volume
-  full_join(tree_diversity, by = c(&#39;Site&#39; = &#39;site&#39;)) %&gt;% # tree_H
-  full_join(shrub_diversity, by = c(&#39;Site&#39; = &#39;site&#39;)) %&gt;% # shrub_H
-  full_join(forb_diversity, by = c(&#39;Site&#39; = &#39;site&#39;)) %&gt;% # forb_H
-  select(Site, severity, tree_bm, shrub_bm, grass_bm, forb_bm, tree_density, tree_survival, veg_cover, litter_cover, cwd_volume, tree_H, shrub_H, forb_H) %&gt;% 
-  rename(site = Site) %&gt;% 
-  arrange(severity) %&gt;%
-  replace(., is.na(.), 0)
-
-write_csv(veg_metrics,&#39;output_data/veg_metrics.csv&#39;, col_names = TRUE)</code></pre>
-<pre class="r"><code>rmarkdown::render(&#39;code/05_vegetation_metrics.Rmd&#39;, output_file = &#39;../docs/05_vegetation_metrics.html&#39;)</code></pre>
 </div>
 
 

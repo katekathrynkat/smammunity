@@ -1,7 +1,6 @@
 ---
 title: "Data Cleaning"
 author: "Kate Culhane"
-date: "December 20, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -64,11 +63,11 @@ Clean data exported to raw_data/field_data/smamms_clean.csv.
 
 ```{r packages & data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 
-# Load necessary data
+# Load data
 
 dat <- read_csv('raw_data/field_data/smamms_raw.csv',
                 na = c('MD', ''),
@@ -717,8 +716,8 @@ age
 #### Summary statistics ####
 
 dat1$indID<-as.factor(dat1$indID)
-dim(dat1[!is.na(dat1$indID),]) ###997 usable captures
-length(levels(dat1$indID)) ###554 unique animals
+dim(dat1[!is.na(dat1$indID),]) ###996 usable captures
+length(levels(dat1$indID)) ###553 unique animals
 sum(dat1$species=="DISD" | dat1$species=="DEST" | dat1$species=="MISS" |
       dat1$species=="ROBB" | dat1$species=="SPRU") ###438 non-captures (no animal)
 sum(is.na(dat1$indID) & dat1$species!="DISD" & dat1$species!="DEST" & dat1$species!="MISS" &
@@ -783,19 +782,31 @@ dat2 <- dat2 %>%
 final <- dat2 %>% 
   select(site, date, day, trap, trap.type, indID, species, age, sex, breed, recap, weight, body.lgth, tail.lgth, comments, catnum)
 
-#### Summary stats ####
-final$indID<-as.factor(as.character(final$indID))
-dim(final[!is.na(final$indID),]) ###988 usable captures
-length(levels(final$indID)) ###545 unique animals
-sum(final$species=="SPRU" | final$species=="MISS") ###478 non-captures
-
-
-
 #### Export clean data ####
 
 write_csv(final, 'raw_data/field_data/smamms_clean.csv', col_names = TRUE)
 
 ```
+
+<br>
+
+**Summary of clean data for analyses**
+
+*Dimensions of data frame:*
+```{r include=TRUE, eval=TRUE, echo=FALSE}
+final$indID<-as.factor(as.character(final$indID))
+print(dim(final[!is.na(final$indID),])) ###987 usable captures
+```
+*Number of unique animals:*
+```{r include=TRUE, eval=TRUE, echo=FALSE}
+print(length(levels(final$indID))) ###544 unique animals
+```
+*Number of non-captures:*
+```{r include=TRUE, eval=TRUE, echo=FALSE}
+print(sum(final$species=="SPRU" | final$species=="MISS")) ###478 non-captures
+```
+
+<br>
 
 **Notes:**
 
@@ -807,4 +818,3 @@ write_csv(final, 'raw_data/field_data/smamms_clean.csv', col_names = TRUE)
 rmarkdown::render('code/01_data_cleaning.Rmd', output_file = '../docs/01_data_cleaning.html')
 
 ```
-

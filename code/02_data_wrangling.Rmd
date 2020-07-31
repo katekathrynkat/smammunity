@@ -1,7 +1,6 @@
 ---
 title: "Data Wrangling"
 author: "Kate Culhane"
-date: "December 20, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -9,7 +8,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(eval = FALSE, include = FALSE)
+knitr::opts_chunk$set(include=FALSE)
 ```
 
 <br>
@@ -22,29 +21,44 @@ CSVs created for use in analyses:
 
 - *output_data/unique_smamms.csv*: Condensed small mammal capture data with one row per unique individual and no empty trap data
 
-- *output_data/effort.csv*: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period)
+- *output_data/effort.csv*: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)
 
 - *output_data/species_matrix.csv*: Species matrix for use in vegan
 
 - *output_data/species_matrix_adj.csv*: Species matrix for use in vegan, adjusted for trapping effort
 
-```{r packages and data, include=FALSE}
+<br>
 
-# Load necessary packages
+***Note:*** These data sets INCLUDE rare species (species with five or less total captures) unless the alternative code is ran (this code is usually commented out). Rare species are:
+
+- dusky-footed woodrat (NEFU)
+- yellow pine chipmunk (NEAM)
+- northern flying squirrel (GLSA)
+- pinyon mouse (PETR)
+- western harvest mouse (REME)
+
+```{r packages and data}
+
+# Load packages
 
 library(tidyverse)
+library(kableExtra)
 
-# Load necessary data
+# Load data
 
-smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv')# %>% # clean mammal data
-  # mutate(species = case_when(
-  #   species=='NEFU' ~ 'SPRU',
-  #   species=='NEAM' ~ 'SPRU',
-  #   species=='GLSA' ~ 'SPRU',
-  #   species=='PETR' ~ 'SPRU',
-  #   species=='REME' ~ 'SPRU',
-  #   TRUE ~ species
-  # ))
+smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') # cleaned mammal data
+
+# TO EXLUDE RARE SPECIES: Use this code instead of the previous line to run all analyses with rare species (<=5 captures each) removed
+
+# smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>%
+#   mutate(species = case_when(
+#     species=='NEFU' ~ 'SPRU',
+#     species=='NEAM' ~ 'SPRU',
+#     species=='GLSA' ~ 'SPRU',
+#     species=='PETR' ~ 'SPRU',
+#     species=='REME' ~ 'SPRU',
+#     TRUE ~ species
+#   ))
 
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% # site metadata
     mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -53,22 +67,19 @@ traits <- read_csv('raw_data/lit_data/mammal_traits.csv') # mammal trait data
 
 ```
 
-
-
-```{r combined data frame}
+```{r}
 
 # Create full smamm data frame with site and species information
 
 smamms <- full_join(smamms_clean, site_meta) %>%
   left_join(traits) %>% 
-  select(site, severity, date, day, trap, indID, species, binomial, binomial_short, family, age, recap, weight, comments)
+  select(site, severity, date, day, trap, indID, species, binomial, binomial_short, common_name, family, age, recap, weight, comments)
 
 write_csv(smamms, 'output_data/smamms.csv', col_names = TRUE)
 
 ```
 
-
-```{r unique animals}
+```{r}
 
 # Create data frame with one row per unique individual
 
@@ -84,8 +95,7 @@ write_csv(unique_smamms, 'output_data/unique_smamms.csv', col_names = TRUE)
 
 ```
 
-
-```{r trapping effort}
+```{r}
 
 # Data frame of trapping effort at each site
 
@@ -105,7 +115,7 @@ write_csv(effort, 'output_data/effort.csv', col_names = TRUE)
 
 ```
 
-```{r species matrices, include=FALSE}
+```{r}
 
 # Species matrix for use in vegan
 
@@ -136,8 +146,19 @@ write_csv(matrix_adj, 'output_data/species_matrix_adj.csv')
 
 ```
 
-```{r}
+<br>
 
+**Species matrix**
+
+```{r, include=TRUE, echo=FALSE}
+
+kable(matrix) %>% 
+  kable_styling(bootstrap_options = c('striped', 'condensed'),
+                full_width = FALSE,
+                position = 'left')
+
+```
+
+```{r, eval=FALSE}
 rmarkdown::render('code/02_data_wrangling.Rmd', output_file = '../docs/02_data_wrangling.html')
-
 ```

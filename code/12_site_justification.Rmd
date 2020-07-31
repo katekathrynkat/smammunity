@@ -1,7 +1,6 @@
 ---
 title: "Site Justification"
 author: "Kate Culhane"
-date: "January 6, 2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -15,7 +14,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages & data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(cowplot) # plot_grid function
@@ -28,122 +27,137 @@ rename <- dplyr::rename
 summarize <- dplyr::summarize
 mutate <- dplyr::mutate
 
-# Load necessary data
+# Load data
 
 spatial <- read_csv('output_data/spatial_metrics.csv')
 
 veg <- read_csv('output_data/veg_metrics.csv')
 
-crosswalk <- read_csv('raw_data/spatial_data/crosswalk.csv')
+crosswalk <- read_csv('raw_data/spatial_data/crosswalk.csv') # for converting between evt and cwhr
 
-evt_data <- read_csv('output_data/EVT_2012.csv') %>% 
-  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evt_data2 <- read_csv('output_data/EVT_2014.csv') %>% 
-  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evt_meta <- read_csv('raw_data/spatial_data/EVT_attributes.csv')
+evt_2012 <- read_csv('output_data/EVT_2012.csv') %>% # pre-fire
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
+evt_12_meta <- read_csv('raw_data/spatial_data/EVT_2012.csv')
+evt_2014 <- read_csv('output_data/EVT_2014.csv') %>% # post-fire
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
+evt_14_meta <- read_csv('raw_data/spatial_data/EVT_2014.csv')
 
-evc_data <- read_csv('output_data/EVC_2012.csv') %>% 
+evc_2012 <- read_csv('output_data/EVC_2012.csv') %>% # pre-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evc_data2 <- read_csv('output_data/EVC_2014.csv') %>% 
+evc_12_meta <- read_csv('raw_data/spatial_data/EVC_2012.csv')
+evc_2014 <- read_csv('output_data/EVC_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evc_meta <- read_csv('raw_data/spatial_data/EVC_attributes.csv')
+evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
 
 ```
 
 <br>
 
-### Pre-disturbance metrics
+### Pre-fire similarity
 
-#### Existing Vegetation Type and Existing Vegetation Cover
+#### Existing Vegetation Cover and Existing Vegetation Type
 
 ```{r, include=FALSE}
 
-# EVT (Existing Vegetation Type)
-
 # 2012 (pre-disturbance)
-
-evt <- evt_data %>% 
-  group_by(severity) %>% 
+evc_12 <- evc_2012 %>% 
+  group_by(severity) %>%
   mutate(total = sum(n)) %>% 
-  group_by(severity, evt) %>% 
+  group_by(severity, evc) %>% 
   mutate(persev = sum(n),
          prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each severity
+  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled
   summarize(sum = sum(n)) %>% 
-  inner_join(evt_meta, by = c('evt' = 'VALUE')) # add metadata
+  inner_join(evc_12_meta, by = c('evc' = 'VALUE')) # add metadata
 
 # 2014 (post-disturbance)
-
-evt2 <- evt_data2 %>% 
-  group_by(severity) %>% 
+evc_14 <- evc_2014 %>% 
+  group_by(severity) %>%
   mutate(total = sum(n)) %>% 
-  group_by(severity, evt) %>% 
+  group_by(severity, evc) %>% 
   mutate(persev = sum(n),
          prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each severity
+  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled
   summarize(sum = sum(n)) %>% 
-  inner_join(evt_meta, by = c('evt' = 'VALUE')) # add metadata
+  inner_join(evc_12_meta, by = c('evc' = 'VALUE')) # add metadata
 
 ```
 
 ```{r, include=FALSE}
 
-# EVT before vs. after
-
-sev.labs <- c("Unburned", "Low-Mod.\nSeverity", "High\nSeverity")
-names(sev.labs) <- c("unb", "mod", "high")
-
-evt_plot <- full_join(evt, evt2, by = c('severity', 'CLASSNAME')) %>% 
-  rename('2012' = sum.x, '2014' = sum.y, EVT = CLASSNAME) %>% 
-  select(severity, EVT, '2012', '2014') %>% 
-  mutate(EVT = factor(EVT, levels = c('Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland',
-                                      'Mediterranean California Mesic Mixed Conifer Forest and Woodland',
-                                      'California Montane Jeffrey Pine(-Ponderosa Pine) Woodland',
-                                      'Mediterranean California Red Fir Forest',
-                                      'California Montane Riparian Systems',
-                                      'California Montane Woodland and Chaparral',
-                                      'North Pacific Montane Grassland'))) %>% 
+evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>% 
+  rename('2012'=sum.x, '2014'=sum.y, EVC=CLASSNAMES) %>% 
+  select(severity, EVC, '2012', '2014') %>% 
   gather(year, pixels, 3:4) %>% 
-  ggplot(aes(x = year, y = pixels, fill = EVT)) +
+  ggplot(aes(x = severity, y = pixels, fill = EVC)) +
     geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = 'Vegetation Type',
-                      values = c('#9C9C00','#696900','#1DA300','#136700',
-                                 '#6baed6',
-                                 '#8c2d04','#fe9929'),
-                      labels = c('Dry-mesic mixed conifer forest',
-                                 'Mesic mixed conifer forest',
-                                 'Montane yellow pine woodland',
-                                 'Red fir forest',
-                                 'Montane riparian system',
-                                 'Montane woodland and chaparral',
-                                 'Montane grassland')) +
-    labs(y = 'EVT (% of pixels)') +
+    scale_fill_manual(name = '% Cover of the Dominant Lifeform',
+                      values = c('#ffce8a','#e89a61',
+                                 '#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32'),
+                      labels = c('Forb: 20-30%',
+                                 'Shrub: 50-60%',
+                                 'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
+                                 'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
+    labs(y = 'Proportional Area') +
     scale_y_continuous(expand = c(0,0),
                        labels = c(0,25,50,75,100)) +
     theme_classic() +
     theme(axis.title.x = element_blank(),
           axis.ticks.x = element_blank(),
-          axis.title.y = element_text(size = 14),
+          axis.title.y = element_text(size = 11),
           axis.text.x = element_blank(),
           axis.text.y = element_text(size = 12, color = 'black'),
-          legend.justification = c(0,0.5),
-          strip.text.x = element_text(size = 10, face = 'bold'),
+          legend.text = element_text(size = 10),
+          legend.justification = c(0,0),
+          strip.text.x = element_text(size = 12, face = 'bold'),
           plot.margin = unit(c(5,5,5,20), 'pt')) +
   expand_limits(y = 1.1) +
-  facet_wrap(~severity,
-             labeller = labeller(severity = sev.labs))
+  facet_wrap(~year,
+             labeller = labeller(year = year.labs))
+    
+```
+
+```{r, fig.height=5.5, fig.width=6}
+
+plot_grid(evc_plot, evt_plot,
+          ncol = 1, align = 'v',
+          rel_heights = c(1, 1))
 
 ```
 
 ```{r, include=FALSE}
 
-# ANOTHER ARRANGEMENT
+# 2012 (pre-disturbance)
+evt_12 <- evt_2012 %>% 
+  group_by(severity) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(severity, evt) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each severity
+  summarize(sum = sum(n)) %>% 
+  inner_join(evt_12_meta, by = c('evt' = 'VALUE')) # add metadata
+
+# 2014 (post-disturbance)
+evt_14 <- evt_2014 %>% 
+  group_by(severity) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(severity, evt) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>%
+  summarize(sum = sum(n)) %>% 
+  inner_join(evt_14_meta, by = c('evt' = 'VALUE'))
+
+```
+
+```{r, include=FALSE}
 
 year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
 names(year.labs) <- c("2012", "2014")
 
-evt_plot2 <- full_join(evt, evt2, by = c('severity', 'CLASSNAME')) %>% 
-  rename('2012' = sum.x, '2014' = sum.y, EVT = CLASSNAME) %>% 
+evt_plot <- full_join(evt_12, evt_14, by = c('severity', 'CLASSNAME')) %>% 
+  rename('2012'=sum.x, '2014'=sum.y, EVT=CLASSNAME) %>% 
   select(severity, EVT, '2012', '2014') %>% 
   mutate(EVT = factor(EVT, levels = c('Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland',
                                       'Mediterranean California Mesic Mixed Conifer Forest and Woodland',
@@ -151,7 +165,7 @@ evt_plot2 <- full_join(evt, evt2, by = c('severity', 'CLASSNAME')) %>%
                                       'Mediterranean California Red Fir Forest',
                                       'California Montane Riparian Systems',
                                       'California Montane Woodland and Chaparral',
-                                      'North Pacific Montane Grassland'))) %>% 
+                                      'North Pacific Montane Grassland'))) %>%
   gather(year, pixels, 3:4) %>% 
   ggplot(aes(x = severity, y = pixels, fill = EVT)) +
     geom_bar(position = 'fill', stat = 'identity') +
@@ -167,109 +181,85 @@ evt_plot2 <- full_join(evt, evt2, by = c('severity', 'CLASSNAME')) %>%
                                  'Montane woodland and chaparral',
                                  'Montane grassland')) +
     labs(y = 'EVT (% of pixels)') +
+    scale_x_discrete(labels = c('Unburned', 'Low-Mod.\nSeverity', 'High\nSeverity')) +
     scale_y_continuous(expand = c(0,0),
                        labels = c(0,25,50,75,100)) +
     theme_classic() +
     theme(axis.title.x = element_blank(),
           axis.ticks.x = element_blank(),
-          axis.title.y = element_text(size = 14),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 12, color = 'black'),
-          legend.text = element_text(size = 10),
-          legend.justification = c(0,0),
-          strip.text.x = element_text(size = 12, face = 'bold'),
-          plot.margin = unit(c(5,5,5,20), 'pt')) +
-  expand_limits(y = 1.1) +
-  facet_wrap(~year,
-             labeller = labeller(year = year.labs))
-
-```
-
-```{r, include=FALSE}
-
-# EVC (Existing Vegetation Cover)
-
-# 2012 (pre-disturbance)
-
-evc <- evc_data %>% 
-  group_by(severity) %>%
-  mutate(total = sum(n)) %>% 
-  group_by(severity, evc) %>% 
-  mutate(persev = sum(n),
-         prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled
-  summarize(sum = sum(n)) %>% 
-  inner_join(evc_meta, by = c('evc' = 'VALUE')) # add metadata
-
-# 2014 (post-disturbance)
-
-evc2 <- evc_data2 %>% 
-  group_by(severity) %>%
-  mutate(total = sum(n)) %>% 
-  group_by(severity, evc) %>% 
-  mutate(persev = sum(n),
-         prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled
-  summarize(sum = sum(n)) %>% 
-  inner_join(evc_meta, by = c('evc' = 'VALUE')) # add metadata
-
-```
-
-```{r, include=FALSE}
-
-# EVC before vs. after
-
-evc_plot <- full_join(evc, evc2, by = c('severity', 'CLASSNAMES')) %>% 
-  rename('2012' = sum.x, '2014' = sum.y, EVC = CLASSNAMES) %>% 
-  select(severity, EVC, '2012', '2014') %>% 
-  gather(year, pixels, 3:4) %>% 
-  ggplot(aes(x = year, y = pixels, fill = EVC)) +
-    geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = 'Vegetation Cover',
-                      values = c('#9ecae1','#fdae6b',
-                                 '#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32'),
-                      labels = c('Forb: 20-30%',
-                                 'Shrub: 50-60%',
-                                 'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
-                                 'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
-    labs(y = 'EVC (% of pixels)') +
-    scale_y_continuous(expand = c(0,0),
-                       labels = c(0,25,50,75,100)) +
-    theme_classic() +
-    theme(axis.title.x = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.title.y = element_text(size = 14),
-          axis.text.x = element_text(size = 12, color = 'black', angle = 90, vjust = 0.5),
-          axis.text.y = element_text(size = 12, color = 'black'),
+          axis.title.y = element_text(size = 12),
+          axis.text.x = element_text(size = 11, color = 'black', angle = 90, vjust = 0.5),
+          axis.text.y = element_text(size = 11, color = 'black'),
+          legend.text = element_text(size = 11),
           strip.background = element_blank(),
           strip.text.x = element_blank(),
-          legend.justification = c(0,0.5),
+          legend.justification = c(0,1),
           plot.margin = unit(c(5,5,5,20), 'pt')) +
   expand_limits(y = 1.1) +
-  facet_wrap(~severity)
+  facet_wrap(~year)
 
 ```
 
+<br>
+
+#### Existing Vegetation Cover and California Wildlife Habitat Relationships
+
+```{r}
+
+# Crosswalking from EVT to CWHR data
+cwhr_2012 <- left_join(evt_2012, crosswalk)
+cwhr_2014 <- left_join(evt_2014, crosswalk)
+
+# 2012 (pre-disturbance)
+cwhr_12 <- cwhr_2012 %>% 
+  group_by(severity) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(severity, cwhr) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each sev
+  summarize(sum = sum(n))
+
+# 2014 (post-disturbance)
+cwhr_14 <- cwhr_2014 %>% 
+  group_by(severity) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(severity, cwhr) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>%
+  summarize(sum = sum(n))
+
+```
 
 ```{r, include=FALSE}
 
-# ANOTHER ARRANGEMENT
+year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
+names(year.labs) <- c("2012", "2014")
 
-evc_plot2 <- full_join(evc, evc2, by = c('severity', 'CLASSNAMES')) %>% 
-  rename('2012' = sum.x, '2014' = sum.y, EVC = CLASSNAMES) %>% 
-  select(severity, EVC, '2012', '2014') %>% 
+cwhr_plot <- full_join(cwhr_12, cwhr_14, by = c('severity', 'cwhr')) %>% 
+  rename('2012' = sum.x, '2014' = sum.y) %>% 
+  select(severity, cwhr, '2012', '2014') %>% 
+  mutate(cwhr = factor(cwhr, levels = c('Perennial grassland',
+                                        'Montane chaparral',
+                                        'Montane riparian',
+                                        'Ponderosa pine/Jeffrey pine/Eastside pine',
+                                        'Red fir',
+                                        'Sierran mixed conifer forest/White fir/Douglas fir'))) %>%
   gather(year, pixels, 3:4) %>% 
-  ggplot(aes(x = severity, y = pixels, fill = EVC)) +
+  ggplot(aes(x = severity, y = pixels, fill = cwhr)) +
     geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = 'Vegetation Cover',
-                      values = c('#ffce8a','#e89a61',
-                                 '#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32'),
-                      labels = c('Forb: 20-30%',
-                                 'Shrub: 50-60%',
-                                 'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
-                                 'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
+    scale_fill_manual(name = 'CWHR Habitat Type',
+                      values = c('#EDDB3B', '#DD9C33', '#6baed6',
+                                 '#79BC2D', '#6F8932', '#ACBA2E'),
+                      labels = c('Perennial grassland',
+                                 'Montane chaparral',
+                                 'Montane riparian',
+                                 'Ponderosa/Jeffrey pine',
+                                 'Red fir',
+                                 'Sierran mixed conifer forest')) +
     labs(y = 'Proportional Area') +
-  scale_x_discrete(labels = c('Unburned', 'Low-Mod.\nSeverity', 'High\nSeverity')) +
+    scale_x_discrete(labels = c('Unburned', 'Low-Mod.\nSeverity', 'High\nSeverity')) +
     scale_y_continuous(expand = c(0,0),
                        labels = c(0,25,50,75,100)) +
     theme_classic() +
@@ -290,101 +280,7 @@ evc_plot2 <- full_join(evc, evc2, by = c('severity', 'CLASSNAMES')) %>%
 
 ```{r, fig.height=5.5, fig.width=6}
 
-plot_grid(evt_plot, evc_plot,
-          ncol = 1, align = 'v',
-          rel_heights = c(1, 1))
-
-plot_grid(evt_plot2, evc_plot2,
-          ncol = 1, align = 'v',
-          rel_heights = c(1, 1.1))
-
-```
-
-#### California Wildlife Habitat Relationships
-
-```{r}
-
-# Crosswalking from EVT to CWHR data
-
-cwhr_data <- left_join(evt_data, crosswalk)
-cwhr_data2 <- left_join(evt_data2, crosswalk)
-
-# 2012 (pre-disturbance)
-
-cwhr <- cwhr_data %>% 
-  group_by(severity) %>% 
-  mutate(total = sum(n)) %>% 
-  group_by(severity, cwhr) %>% 
-  mutate(persev = sum(n),
-         prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each sev
-  summarize(sum = sum(n))
-
-# 2014 (post-disturbance)
-
-cwhr2 <- cwhr_data2 %>% 
-  group_by(severity) %>% 
-  mutate(total = sum(n)) %>% 
-  group_by(severity, cwhr) %>% 
-  mutate(persev = sum(n),
-         prop = persev/total) %>% 
-  filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled for each sev
-  summarize(sum = sum(n))
-
-```
-
-
-```{r, include=FALSE}
-
-# PLOT
-
-year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
-names(year.labs) <- c("2012", "2014")
-
-cwhr_plot <- full_join(cwhr, cwhr2, by = c('severity', 'cwhr')) %>% 
-  rename('2012' = sum.x, '2014' = sum.y) %>% 
-  select(severity, cwhr, '2012', '2014') %>% 
-  mutate(cwhr = factor(cwhr, levels = c('Montane chaparral',
-                                        'Perennial grassland',
-                                        'Montane riparian',
-                                        'Ponderosa pine/Jeffrey pine/Eastside pine',
-                                        'Red fir',
-                                        'Sierran mixed conifer forest/White fir/Douglas fir'))) %>%
-  gather(year, pixels, 3:4) %>% 
-  ggplot(aes(x = severity, y = pixels, fill = cwhr)) +
-    geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = 'CWHR Habitat Type',
-                      values = c('#DD9C33', '#EDDB3B', '#6baed6',
-                                 '#79BC2D', '#6F8932', '#ACBA2E'),
-                      labels = c('Montane chaparral',
-                                 'Perennial grassland',
-                                 'Montane riparian',
-                                 'Ponderosa/Jeffrey pine',
-                                 'Red fir',
-                                 'Sierran mixed conifer forest')) +
-    labs(y = 'Proportional Area') +
-    scale_y_continuous(expand = c(0,0),
-                       labels = c(0,25,50,75,100)) +
-    theme_classic() +
-    theme(axis.title.x = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.title.y = element_text(size = 12),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 11, color = 'black'),
-          legend.text = element_text(size = 11),
-          legend.justification = c(0,1),
-          strip.text.x = element_text(size = 11, face = 'bold'),
-          plot.margin = unit(c(5,5,5,20), 'pt')) +
-  expand_limits(y = 1.1) +
-  facet_wrap(~year,
-             labeller = labeller(year = year.labs))
-
-```
-
-
-```{r, fig.height=5.5, fig.width=6}
-
-plot_grid(cwhr_plot, evc_plot2,
+plot_grid(evc_plot, cwhr_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1, 1.1))
 
@@ -395,7 +291,7 @@ ggsave('figs/fig1C.png', plot = last_plot(),
 
 <br>
 
-### Post-disturbance metrics
+### Fire categories
 
 **Fire severity metrics for the three severity categories:**
 
@@ -608,7 +504,5 @@ ggplot(metrics, aes(x = avg_pixel, y = 1, color = severity)) +
 ```
 
 ```{r eval=FALSE}
-
 rmarkdown::render('code/12_site_justification.Rmd', output_file = '../docs/12_site_justification.html')
-
 ```

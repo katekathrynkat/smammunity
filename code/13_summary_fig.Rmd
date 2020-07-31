@@ -1,7 +1,6 @@
 ---
 title: "Summary Figure"
 author: "Kate Culhane"
-date: "2/18/2020"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,7 +16,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages & data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(ggnewscale)
@@ -25,7 +24,7 @@ library(scales)
 library(ggthemes)
 library(cowplot) # plot_grid function
 
-# Load necessary data
+# Load data
 
 abundance <- read_csv('output_data/abundance.csv')
 
@@ -40,7 +39,6 @@ PD <- read_csv('output_data/PD.csv')
 ```{r}
 
 # Combined data frame
-
 metrics <- full_join(abundance, FD) %>% 
   full_join(diversity) %>% 
   full_join(PD) %>% 
@@ -53,7 +51,6 @@ metrics <- full_join(abundance, FD) %>%
            FEve, PD)
 
 # Summary data frame 
-
 summary <- metrics %>% 
   gather(key = 'metric', value = 'value', 3:10) %>% 
   group_by(metric, severity) %>% 
@@ -65,18 +62,19 @@ summary <- metrics %>%
                                             'rarefied_richness', 'J',
                                             'FEve', 'PD')))
 
-metric_labs <- c('Total\nAbundance', 'Biomass (kg)',
-              'Abundance:\nP. maniculatus', 'Abundance:\nS. trowbridgii',
-              'Rarefied\nRichness', 'Evenness',
+# Vectors
+metric_labs <- c('Total abundance\n(indv/site)', 'Biomass\n(kg/site)',
+              'Deer mouse\nabundance (indv/site)', 'Trowbridge\'s shrew\nabundance (indv/site)',
+              'Rarefied\nrichness', 'Evenness',
               'FEve', 'Faith\'s PD')
 names(metric_labs) <- c('n_adj', 'biomass', 'n_adj_pema', 'n_adj_sotr',
                         'rarefied_richness', 'J', 'FEve', 'PD')
 
 ```
 
-```{r}
+### Summary Figure: abundance/biomass
 
-# Summary Figure A
+```{r}
 
 summary %>% 
   filter(metric=='n_adj' | metric=='biomass' | metric=='n_adj_pema' | metric=='n_adj_sotr') %>% 
@@ -89,12 +87,12 @@ summary %>%
   theme(legend.position = 'NA',
         axis.line.y = element_line(),
         axis.line.x = element_line(),
-        axis.text.y = element_text(size = 10),
-        strip.text = element_text(size = 11, angle = 270),
+        axis.text.y = element_text(size = 8),
+        strip.text = element_text(size = 9, angle = 270, vjust = 1),
         strip.placement = 'outside',
         plot.margin = unit(c(10,10,10,10), 'pt'),
-        panel.spacing.x = unit(30, 'pt'),
-        panel.spacing.y = unit(35, 'pt')) +
+        panel.spacing.x = unit(20, 'pt'),
+        panel.spacing.y = unit(30, 'pt')) +
   scale_y_continuous(breaks = pretty_breaks(3),
                      expand = c(0,0)) +
   facet_wrap(~metric, ncol = 2, dir = 'h', scales = 'free',
@@ -102,13 +100,15 @@ summary %>%
              labeller = labeller(metric = metric_labs))
 
 ggsave('figs/fig2.png', plot = last_plot(),
-       width = 4, height = 3, units = 'in')
+       width = 4, height = 3.5, units = 'in')
 
 ```
 
-```{r}
+<br>
 
-# Summary Figure B
+### Summary Figure: diversity
+
+```{r}
 
 summary %>% 
   filter(metric=='rarefied_richness' | metric=='J' | metric=='FEve' | metric=='PD') %>% 
@@ -121,12 +121,12 @@ summary %>%
   theme(legend.position = 'NA',
         axis.line.y = element_line(),
         axis.line.x = element_line(),
-        axis.text.y = element_text(size = 10),
-        strip.text = element_text(size = 11, angle = 270),
+        axis.text.y = element_text(size = 9),
+        strip.text = element_text(size = 10, angle = 270),
         strip.placement = 'outside',
         plot.margin = unit(c(10,10,10,10), 'pt'),
-        panel.spacing.x = unit(30, 'pt'),
-        panel.spacing.y = unit(35, 'pt')) +
+        panel.spacing.x = unit(20, 'pt'),
+        panel.spacing.y = unit(25, 'pt')) +
   scale_y_continuous(breaks = pretty_breaks(3),
                      expand = c(0,0)) +
   facet_wrap(~metric, ncol = 2, dir = 'h', scales = 'free',
@@ -134,12 +134,10 @@ summary %>%
              labeller = labeller(metric = metric_labs))
 
 ggsave('figs/fig3.png', plot = last_plot(),
-       width = 4, height = 3, units = 'in')
+       width = 4, height = 3.5, units = 'in')
 
 ```
 
 ```{r eval=FALSE}
-
-rmarkdown::render('code/13_summary_fig.Rmd', output_file = '../docs/13_summary_fig_NORARE.html')
-
+rmarkdown::render('code/13_summary_fig.Rmd', output_file = '../docs/13_summary_fig.html')
 ```

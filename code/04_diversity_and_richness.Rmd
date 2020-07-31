@@ -1,7 +1,6 @@
 ---
 title: "Small Mammal Diversity"
 author: "Kate Culhane"
-date: "November 7, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,15 +16,18 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(vegan)
 library(VennDiagram)
 library(iNEXT)
 library(dunn.test)
+library(rstatix)
+library(ggpubr)
+library(effectsize)
 
-# Load necessary data
+# Load data
 
 matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -64,7 +66,7 @@ rownames(matrix_pooled) <- matrix_pooled_df$severity
 
 # Vectors for boxplots
 
-colors <- c('darkgreen', 'orange', 'red')
+cols <- c('darkgreen', 'orange', 'red')
 xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
 
 ```
@@ -78,19 +80,17 @@ xlabs <- c('Unburned', 'Moderate Severity', 'High Severity')
 ```{r}
 
 # Calculate species richness (number of species) for each site
-
 n <- specnumber(matrix)
 
 # Make a dataframe with site, severity, and number of species
+n_spp <- tibble(site = matrix_df$site, severity = matrix_df$severity, n_spp = n)
 
-n_spp <- data_frame(site = matrix_df$site, severity = matrix_df$severity, n_spp = n)
-
-# Boxplots
-
+# Jitterplot with mean/SE
 ggplot(n_spp, aes(x = severity, y = n)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
        y = 'Number of Species') +
   theme(legend.position = 'NA') +
@@ -117,7 +117,6 @@ all_spp <- list(unb$species, mod$species, high$species)
 names(all_spp) <- c('Unburned', 'Low-Moderate', 'High')
 
 # VennDiagram
-
 spp_venn <- venn.diagram(all_spp,
                          filename = NULL,
                          lty = 'blank',
@@ -349,74 +348,59 @@ ggplot() +
 ```{r rarefaction, include=FALSE}
 
 # Calculate richness for each site using rarefaction
-
 raremax <- min(rowSums(matrix))
 raremax # minimum sample count = 5: rarefy using this value
-
 rarefied_richness <- rarefy(matrix, sample = raremax)
 
 # Make a dataframe with site, severity, and richness
-
-diversity <- data_frame(site = matrix_df$site, severity = matrix_df$severity, rarefied_richness)
-
-# Calculate mean richness for each treatment
-
-diversity %>% 
-  group_by(severity) %>% 
-  summarise(
-    rich_mean = mean(rarefied_richness, na.rm = TRUE),
-    rich_sd = sd(rarefied_richness, na.rm = TRUE)
-  )
+richness <- tibble(site = matrix_df$site, severity = matrix_df$severity, rarefied_richness)
 
 ```
 
 ```{r data distribution, eval=FALSE}
 
-# Explore the data distribution
+# Check summary stats and model assumptions for richness
 
-ggplot(diversity, aes(x = rarefied_richness)) +
-  geom_histogram(bins = 6) +
-  facet_wrap(~severity)
-
-ggplot(diversity, aes(sample = rarefied_richness)) +
-  geom_qq() +
-  facet_wrap(~severity)
-
-variances <- diversity %>% 
+# Summary table
+richness %>% 
   group_by(severity) %>% 
-  summarize(variance = var(rarefied_richness))
+  get_summary_stats(rarefied_richness)
 
-# Histograms look a little funky because sample size is so small
-# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
-# n=9 for each severity, so cannot use CLT to justify normality
+# Check for outliers
+richness %>% group_by(severity) %>% 
+  identify_outliers(rarefied_richness)
 
-# The variances aren't that different for each severity
+# Check for normality
+lm <- lm(rarefied_richness~severity, data=richness)
+ggqqplot(residuals(lm))
+ggqqplot(richness, "rarefied_richness", facet.by="severity")
+shapiro_test(residuals(lm))
+richness %>% group_by(severity) %>% 
+  shapiro_test(rarefied_richness)
+# Looks pretty good
 
+# Homogoneity of variance
+plot(lm,1)
+richness %>% levene_test(rarefied_richness~severity)
+# Variance is fine
 
-
-
-# Test for significant differences in means
-
-# ANOVA
-rare_aov <- aov(rarefied_richness ~ severity, data = diversity)
-summary(rare_aov)
-# p<0.05, so there's at least one sig dif in means
-
-# Post-hoc pairwise testing by Tukey's HSD
-TukeyHSD(rare_aov)
-# p=0.003 for low vs. high, but otherwise p>0.05
-# significant difference between low and high severity means, but not between med vs. low or high severities
+#ANOVA
+aov <- aov(rarefied_richness~severity, data=richness)
+summary(aov)
+richness %>% ungroup() %>% 
+  tukey_hsd(rarefied_richness~severity)
+cohens_f(aov)
 
 ```
 
 ```{r Rarefied Richness boxplot}
 
-# Boxplots
-
-ggplot(diversity, aes(x = severity, y = rarefied_richness)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+# Jitterplot with mean/SE
+ggplot(richness, aes(x = severity, y = rarefied_richness)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
        y = 'Rarefied Richness') +
   theme(legend.position = 'NA') +
@@ -437,7 +421,7 @@ ggplot(diversity, aes(x = severity, y = rarefied_richness)) +
 
 J <- diversity(matrix_adj)/log(specnumber(matrix_adj)) # H / log (number of species)
 
-diversity <- cbind(diversity, J)
+diversity <- cbind(richness, J)
 diversity$J[is.nan(diversity$J)] <- NA
 
 ```
@@ -446,14 +430,14 @@ diversity$J[is.nan(diversity$J)] <- NA
 
 ```{r J boxplot}
 
-# Boxplots
-
+# Jitterplot with mean/SE
 ggplot(diversity, aes(x = severity, y = J)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
-       y = 'Pielou Evenness (J)') +
+       y = 'Pielou\'s Evenness (J)') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
@@ -461,43 +445,38 @@ ggplot(diversity, aes(x = severity, y = J)) +
 
 ```{r J data distribution, eval=FALSE}
 
-# Calculate mean evenness for each treatment
+# Check summary stats and model assumptions for evenness
 
+# Summary table
 diversity %>% 
   group_by(severity) %>% 
-  summarise(
-    J_mean = mean(J, na.rm = TRUE),
-    J_sd = sd(J, na.rm = TRUE)
-  )
+  get_summary_stats(J)
 
-# Explore the data distribution
+# Check for outliers
+diversity %>% group_by(severity) %>% 
+  identify_outliers(J)
+# 3 outliers (GRNCAR, GRNKAN, GRNWOO)
 
-ggplot(diversity, aes(x = J)) +
-  geom_histogram(bins = 6) +
-  facet_wrap(~severity)
-ggplot(diversity, aes(sample = J)) +
-  geom_qq() +
-  facet_wrap(~severity)
-diversity %>% 
-  group_by(severity) %>% 
-  summarize(variance = var(J, na.rm = TRUE))
+# Check for normality
+lm <- lm(J~severity, data=diversity)
+ggqqplot(residuals(lm))
+ggqqplot(diversity, "J", facet.by="severity")
+shapiro_test(residuals(lm))
+diversity %>% group_by(severity) %>% 
+  shapiro_test(J)
+# Looks pretty good
 
-# Histograms look a little funky because sample size is so small
-# qq-plots look good
-# n=9 for each severity, so cannot use CLT to justify normality
-# The variances aren't that different for each severity
+# Homogoneity of variance
+plot(lm,1)
+diversity %>% levene_test(J~severity)
+# Variance is fine
 
-
-# Test for significant differences in means
-
-# ANOVA
-J_aov <- aov(J ~ severity, data = diversity)
-summary(J_aov)
-# p=0.0499, so there's at least one sig dif in means
-
-# Post-hoc pairwise testing with Tukey's HSD
-TukeyHSD(J_aov)
-# p=0.0419335 for unb vs. high, but otherwise p>0.05
+#ANOVA
+aov <- aov(J~severity, data=diversity)
+summary(aov)
+diversity %>% ungroup() %>% 
+  tukey_hsd(J~severity)
+cohens_f(aov)
 
 ```
 
@@ -523,12 +502,12 @@ write_csv(diversity, 'output_data/diversity.csv', col_names = TRUE)
 
 ```{r H boxplot}
 
-# Boxplots
-
+# Jitterplot with mean/SE
 ggplot(diversity, aes(x = severity, y = H)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
        y = 'Shannon Diversity (H)') +
   theme(legend.position = 'NA') +
@@ -538,53 +517,44 @@ ggplot(diversity, aes(x = severity, y = H)) +
 
 ```{r H data distribution, eval=FALSE}
 
-# Calculate mean diversity for each treatment
+# Check summary stats and model assumptions for evenness
 
+# Summary table
 diversity %>% 
   group_by(severity) %>% 
-  summarise(
-    H_mean = mean(H),
-    H_sd = sd(H)
-  )
+  get_summary_stats(H)
 
-# Explore the data distribution
+# Check for outliers
+diversity %>% group_by(severity) %>% 
+  identify_outliers(H)
 
-ggplot(diversity, aes(x = H)) +
-  geom_histogram() +
-  facet_wrap(~severity)
-ggplot(diversity, aes(sample = H)) +
-  geom_qq() +
-  facet_wrap(~severity)
+# Check for normality
+lm <- lm(H~severity, data=diversity)
+ggqqplot(residuals(lm))
+ggqqplot(diversity, "H", facet.by="severity")
+shapiro_test(residuals(lm))
+diversity %>% group_by(severity) %>% 
+  shapiro_test(H)
+# Looks pretty good
 
-variances <- diversity %>% 
-  group_by(severity) %>% 
-  summarize(variance = var(H))
+# Homogoneity of variance
+plot(lm,1)
+diversity %>% levene_test(H~severity)
+# Variance is fine
 
-# Histograms look a little funky because sample size is so small
-# qq-plots for low and med severities look good, but qq-plot for high severity is skewed towards 0
-# n=9 for each severity, so cannot use CLT to justify normality
-# The variances aren't that different for each severity
-
-
-
-# ANOVA
-H_aov <- aov(H ~ severity, data = diversity)
-summary(H_aov)
-# p<0.05, so there's at least one sig dif in means
-
-# Post-hoc pairwise testing with Tukey's HSD
-TukeyHSD(H_aov)
-# p=0.005 for low vs. high, but otherwise p>0.05
-# significant difference between low and high severity means, but not between med vs. low or high severities
+#ANOVA
+aov <- aov(H~severity, data=diversity)
+summary(aov)
+diversity %>% ungroup() %>% 
+  tukey_hsd(H~severity)
+cohens_f(aov)
 
 ```
 
-- Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.1, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
+- Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.2, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
 
 <br>
 
 ```{r eval=FALSE}
-
-rmarkdown::render('code/04_diversity_and_richness.Rmd', output_file = '../docs/04_diversity_and_richness_NORARE.html')
-
+rmarkdown::render('code/04_diversity_and_richness.Rmd', output_file = '../docs/04_diversity_and_richness.html')
 ```

@@ -1,7 +1,6 @@
 ---
 title: "Habitat Metric PCA"
 author: "Kate Culhane"
-date: "February 12, 2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -17,7 +16,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(ggbiplot)
@@ -30,7 +29,7 @@ library(corrplot)
 rename <- dplyr::rename
 select <- dplyr::select
 
-# Load necessary data
+# Load data
 
 matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))

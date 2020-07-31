@@ -1,7 +1,6 @@
 ---
 title: "Abundance Analyses"
 author: "Kate Culhane"
-date: "November 9, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -15,19 +14,20 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 <br>
 
-### Cumulative Abundance
-
 ```{r packages and data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
+library(rstatix)
+library(ggpubr)
+library(effectsize)
 library(dunn.test)
 library(kableExtra)
-library(RColorBrewer)
+library(calecopal)
 library(fishmethods) # for Schnabel's estimate
 
-# Load necessary data
+# Load data
 
 smamms <- read_csv('output_data/unique_smamms.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -38,9 +38,14 @@ captures <- read_csv('output_data/smamms.csv') %>%
 effort <- read_csv('output_data/effort.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
+# Vectors for ggplot
+
+cols <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
 ```
 
-```{r total abundance data frame}
+```{r}
 
 # Calculate total abundance summed across all species at each site (raw and adjusted)
 
@@ -48,13 +53,16 @@ abundance <- smamms %>%
   group_by(site, severity) %>% 
   tally() %>% # count individuals per site
   full_join(effort) %>% 
-  mutate(n_adj = n/effort*300) # add column adjusted for effort
+  mutate(n_adj = n/effort*300) %>% # add column adjusted for effort
+  ungroup()
 
 ```
 
-**Total raw abundance per species, summed across all sites:**
+## Summaries of abundance
 
-```{r abundance per species summary table}
+### Raw abundance by species
+
+```{r}
 
 # Summary table of overall mammal abundances
 
@@ -64,9 +72,7 @@ summary <- smamms %>%
   ungroup() %>% 
   arrange(-n)
 
-cols <- c('Binomial', 'Family', 'Individuals')
-
-kable(summary[,2:4], col.names = cols) %>% 
+kable(summary[,2:4], col.names = c('Binomial', 'Family', 'Individuals')) %>% 
   kable_styling(bootstrap_options = c('striped', 'condensed'),
                 full_width = FALSE,
                 position = 'left') %>% 
@@ -80,26 +86,16 @@ kable(summary[,2:4], col.names = cols) %>%
 
 <br>
 
-**Overall abundance of small mammals was consistent across fire severities:** 
+### Abundance by site
 
-```{r abundance across severities boxplot}
+```{r}
 
-# Summary table
-
-abundance_summary <- abundance %>% 
-  group_by(severity) %>% 
-  summarize(mean = mean(n),
-            sd = sd(n))
-
-# Summarize data with boxplots
-
-colors <- c('darkgreen', 'orange', 'red')
-xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
-
+# Jitterplot with mean/SE
 ggplot(abundance, aes(x = severity, y = n_adj)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
        y = 'Total small mammal abundance') +
   theme(legend.position = 'NA') +
@@ -107,58 +103,97 @@ ggplot(abundance, aes(x = severity, y = n_adj)) +
 
 ```
 
-```{r abundance across severities kruskal-wallis, eval=FALSE}
+```{r, eval=FALSE}
 
-# Calculate mean abundance for each treatment
+# Check summary stats and model assumptions for total abundance per site
 
+# Summary table
 abundance %>% 
   group_by(severity) %>% 
-  summarize(
-    n_mean = mean(n_adj),
-    n_sd = sd(n_adj)
-  )
+  get_summary_stats(n_adj)
 
-# Does the total abundance (summed across species) vary across the fire severity gradient?
+# Check for outliers
+abundance %>% group_by(severity) %>% 
+  identify_outliers(n_adj)
+# 2 outliers (HICORN and MIXMOR), no extreme outliers
 
-# Explore the data distribution and variance
+# Check for normality
+lm <- lm(n_adj~severity, data=abundance)
+ggqqplot(residuals(lm))
+ggqqplot(abundance, "n_adj", facet.by="severity")
+shapiro_test(residuals(lm))
+abundance %>% group_by(severity) %>% 
+  shapiro_test(n_adj)
+# The two outliers make the data not normal
 
-ggplot(abundance, aes(x = n_adj)) +
-  geom_histogram(bins = 6) +
-  facet_wrap(~severity)
+# Homogoneity of variance
+plot(lm,1)
+abundance %>% levene_test(n_adj~severity)
+# Variance is fine
 
-ggplot(abundance, aes(sample = n_adj)) +
-  geom_qq() +
-  facet_wrap(~severity)
+#ANOVA
+aov <- aov(n_adj~severity, data=abundance)
+summary(aov)
+abundance %>% ungroup() %>% 
+  tukey_hsd(n_adj~severity)
+eta_squared(aov)
+cohens_f(aov)
 
-abundance %>% 
-  group_by(severity) %>% 
-  summarize(variance = var(n_adj))
+#Kruskal-Wallis
+kruskal_test(n_adj~severity, data=abundance)
+kruskal_effsize(n_adj~severity, data=abundance)
 
-# Histograms look a little funky because sample size is so small, qq-plots look normal
-# n=9 for each severity, so cannot use CLT to justify normality
-# Variances are WAY different (>4x)
-
-
-# Kruskal Wallis
-
-kruskal.test(n_adj ~ severity, data = abundance)
-# p>0.05, so there are no sig differences in means
 
 ```
 
-- The abundance of small mammals summed across all species and standardized by trapping effort did not differ significantly between fire severity treatments (Kruskal-Wallis $\chi^2$(2) = 5.3, p = 0.07, n = 9 for each).
-- However, it qualitatively looks like abundance is much higher in high sevrity sites
+Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
+
+Two of these sites look like outliers:
+
+- HICORN had a ridiculous number of PEMA
+- MIXMOR had a lot of PEMA, OTBE, and SOTR
+
+They make the data violate assumptions for ANOVA (data are not normal), so were removed for the following test.
+
+```{r}
+
+# Removing the two outliers
+abundance2 <- abundance %>% 
+  filter(site!='MIXMOR', site!='HICORN')
+
+# Jitterplot with mean/SE
+ggplot(abundance2, aes(x = severity, y = n_adj)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+# ANOVA
+aov <- aov(n_adj~severity, data=abundance2)
+summary(aov)
+abundance2 %>% ungroup() %>% 
+  tukey_hsd(n_adj~severity)
+eta_squared(aov)
+cohens_f(aov)
+
+```
+
+Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Sites HICORN and MIXMOR were removed. Abundance was standardized by trapping effort.
+
+- ANOVA F=5.78, p=0.0096
+- Tukey mod vs. high p=0.00706
 
 <br>
 
-### Proportional Abundance
-
-**Small mammal community composition varied across fire severities:** 
+### Proportional abundance by site
 
 ```{r proportional abundance per site, fig.width=7}
 
 # Dataframe of proportional species abundance per site
-
 prop_site <- smamms %>% 
   group_by(site, severity, species, binomial) %>% 
   summarize(n = length(species)) %>% 
@@ -170,7 +205,6 @@ prop_site <- smamms %>%
   mutate(binomial = factor(binomial, levels = summary$binomial)) # order species by total abundance
 
 # Column graph of proportional species abundance per site
-
 ggplot(prop_site, aes(x = site, y = prop,
                                        fill = binomial)) +
   geom_col() +
@@ -179,8 +213,7 @@ ggplot(prop_site, aes(x = site, y = prop,
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   scale_y_continuous(breaks = c(0, 50, 100),
                      expand = c(0, 0)) +
-  scale_fill_brewer(type = 'qual', palette = 3,
-                    name = 'Species') +
+  scale_fill_manual(values=cal_palette(name = 'sierra2', n = 11, type = 'continuous')) +
   theme_minimal() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -193,25 +226,23 @@ ggplot(prop_site, aes(x = site, y = prop,
 
 ```
 
-- The proportion of abundance by species is shown for each site across the fire severity gradient.
-
 <br>
 
-**Small mammal community varied across fire severities:** 
+### Proportional abundance by species
 
 ```{r proportional abundance per species}
 
 # Data frame of proportional treatment abundances per species
 
 prop_species <- smamms %>% 
-  group_by(species, binomial_short, site, severity) %>% 
+  group_by(species, common_name, site, severity) %>% 
   summarize(n = length(site)) %>% 
   full_join(effort) %>% 
   mutate(cpue = n/effort * 300) %>% # adjust for trapping effort
-  group_by(species, binomial_short, severity) %>% 
+  group_by(species, common_name, severity) %>% 
   summarize(n = sum(cpue)) %>% 
   mutate(prop = n/sum(n)*100) %>% # proportion of captures at each treatment, per species
-  mutate(label = binomial_short) %>% 
+  mutate(label = common_name) %>% 
   ungroup()
 
 prop_low <- prop_species %>%  # data frame for just low severity
@@ -251,7 +282,7 @@ ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
   geom_col() +
   geom_text(aes(x = label, y = 103,
                 label = paste('n = ', n.y)),
-            size = 4, hjust = 0, color = 'grey30') +
+            size = 3.2, hjust = 0, color = 'grey30') +
   scale_fill_manual(values = colors,
                     name = 'Fire severity',
                     labels = labs) +
@@ -261,8 +292,8 @@ ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
                      expand = c(0,0)) +
   theme_minimal() +
   labs(x = '', y = '') +
-  theme(axis.text.y = element_text(face = 'italic', size = 12, color = 'black'),
-        axis.text.x = element_text(size = 12),
+  theme(axis.text.y = element_text(size = 10, color = 'black'),
+        axis.text.x = element_text(size = 10),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         legend.position = 'none',
@@ -277,13 +308,11 @@ ggsave('figs/fig5a.png', plot = last_plot(),
 
 <br>
 
-### Abundance of each species separately
+## Abundance by species
 
 ```{r abundance per species, include=TRUE, fig.width=3, fig.height=2}
 
 # Plot total abundance for species at each site
-
-xlabs <- c('Unburned', 'Moderate', 'High') 
 
 for (i in unique(smamms$species)) {
   
@@ -302,9 +331,10 @@ for (i in unique(smamms$species)) {
   select(site, severity, n_target, effort_target, n_adj_target) 
   
   plot <- ggplot(data, aes(x = severity, y = n_adj_target)) +
-    geom_boxplot(aes(fill = severity)) +
-    scale_fill_manual(values = colors) +
-    theme_minimal() +
+    geom_jitter(aes(color = severity), height=0) +
+    scale_color_manual(values = cols) +
+    stat_summary(fun.data = mean_se, geom = "crossbar", width=0.5) +
+    theme_classic() +
     labs(x = 'Fire Severity',
          y = 'Abundance',
          title = i) +
@@ -317,48 +347,15 @@ for (i in unique(smamms$species)) {
 
 ```
 
-```{r, eval=FALSE}
+Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort for each species individually (i.e. non-target species were counted as half of a trap night, similar to treatment of sprung traps)
 
-# Stats for total abundance for species at each site
+<br>
 
-for (i in unique(smamms$species)) {
-  
-  data <- smamms %>% 
-  filter(species == i) %>% 
-  group_by(site, severity) %>% 
-  tally() %>%
-  full_join(abundance, by = c('site', 'severity')) %>% 
-  mutate(non_target = (n.y-n.x),
-         effort_target = effort - non_target/2,
-         n_target = n.x,
-         n_adj_target = case_when(
-           !is.na(n_target) ~ (n_target/effort_target)*300,
-           TRUE ~ 0
-           )) %>% 
-  select(site, severity, n_target, effort_target, n_adj_target) 
-  
-  print(i)
-  kruskal.test(n_adj_target ~ severity, data = data)
-  dunn.test(data$n_adj_target, data$severity,
-            method = 'bonferroni')
-  
-}
-
-```
-
-**Significant results:**
-
-- PEMA (KW p = 0.009835)
-  - mod-high (Dunns p = 0.0167)
-  - unb-high (Dunns p = 0.0099)
-- SOTR (KW p = 0.00009407)
-  - unb-mod (Dunns p = 0.0019)
-  - unb-high (Dunns p = 0.0001)
+### Deer mouse (PEMA)
   
 ```{r}
 
 # PEMA abundance
-
 pema <- smamms %>% 
   filter(species == 'PEMA') %>% 
   group_by(site, severity) %>% 
@@ -371,10 +368,76 @@ pema <- smamms %>%
            !is.na(n_pema) ~ (n_pema/effort_pema)*300,
            TRUE ~ 0
            )) %>% 
-  select(site, n_adj_pema)
+  select(site, severity, n_adj_pema) %>% 
+  ungroup()
+
+# Check summary stats and model assumptions for total PEMA abundance per site
+
+# Summary table
+pema %>% 
+  group_by(severity) %>% 
+  get_summary_stats(n_adj_pema)
+
+# Check for outliers
+pema %>% group_by(severity) %>% 
+  identify_outliers(n_adj_pema)
+# 1 outlier in HICORN, no extreme outliers
+
+# Check for normality
+lm <- lm(n_adj_pema~severity, data=pema)
+ggqqplot(residuals(lm))
+ggqqplot(pema, "n_adj_pema", facet.by="severity")
+shapiro_test(residuals(lm))
+pema %>% 
+  group_by(severity) %>% 
+  shapiro_test(n_adj_pema)
+# The outlier makes the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+pema %>% ungroup() %>%
+  levene_test(n_adj_pema~severity)
+# Variance is fine
+
+kruskal_test(n_adj_pema~severity, data=pema)
+kruskal_effsize(n_adj_pema~severity, data=pema)
+
+### REMOVE HICORN FOR STATS
+
+# Removing the outlier
+pema2 <- pema %>% 
+  filter(site!='HICORN')
+
+# Jitterplot with mean/SE
+ggplot(pema2, aes(x = severity, y = n_adj_pema)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'PEMA Abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+# ANOVA
+summary(aov(n_adj_pema~severity, data=pema2))
+pema2 %>% ungroup() %>% 
+  tukey_hsd(n_adj_pema~severity)
+
+```
+
+Jitter plot points represent PEMA abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Site HICORN was removed. Abundance was standardized by trapping effort.
+
+- ANOVA F=5.619, p=0.0103
+- Tukey unb vs. high p=0.0158, mod vs. high p=0.0253
+
+<br>
+
+### Trowbridge's shrew (SOTR)
+
+```{r}
 
 # SOTR abundance
-
 sotr <- smamms %>% 
   filter(species == 'SOTR') %>% 
   group_by(site, severity) %>% 
@@ -387,20 +450,69 @@ sotr <- smamms %>%
            !is.na(n_sotr) ~ (n_sotr/effort_sotr)*300,
            TRUE ~ 0
            )) %>% 
-  select(site, n_adj_sotr)
+  select(site, severity, n_adj_sotr)
 
-# Export abundance data
+# Check summary stats and model assumptions for total PEMA abundance per site
 
-abundance_dat <- full_join(abundance, pema) %>% 
-  full_join(sotr)
+# Summary table
+sotr %>% 
+  group_by(severity) %>% 
+  get_summary_stats(n_adj_sotr)
 
-write_csv(abundance_dat, 'output_data/abundance.csv', col_names = TRUE)
+# Check for outliers
+sotr %>% group_by(severity) %>% 
+  identify_outliers(n_adj_sotr)
+# 2 outliers: MIXDP2 and MIXMOR, both extreme
+
+# Check for normality
+lm <- lm(n_adj_sotr~severity, data=sotr)
+ggqqplot(residuals(lm))
+ggqqplot(sotr, "n_adj_sotr", facet.by="severity")
+shapiro_test(residuals(lm))
+# The outlier makes the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+sotr %>% ungroup() %>%
+  levene_test(n_adj_sotr~severity)
+# Variance is all weird because high sites had no shrews
+
+
+
+
+
+
+### REMOVE HICORN FOR STATS
+
+# Removing the outlier
+sotr2 <- sotr %>% 
+  filter(site!='HICORN')
+
+# Jitterplot with mean/SE
+ggplot(sotr, aes(x = severity, y = n_adj_sotr)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'SOTR Abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+# ANOVA
+summary(aov(n_adj_sotr~severity, data=sotr))
+sotr %>% ungroup() %>% 
+  tukey_hsd(n_adj_sotr~severity)
+
+sotr %>% ungroup() %>% 
+  welch_anova_test(n_adj_sotr~severity)
+
 
 ```
 
 <br>
 
-### Population size by Schnabel's estimate
+## Population size by Schnabel's estimate
 
 ```{r Schnabel estimate}
 
@@ -452,14 +564,13 @@ cap_rate <- full_join(pop_est, abundance, by = c('i' = 'site')) %>%
 
 ```{r Schnabel estimate boxplot}
 
-# Boxplot of Schnabel estimate of population size by severity
-
 ggplot(cap_rate, aes(x = severity, y = schnabel)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
-       y = 'Population Size (N)') +
+       y = 'Population Size (n)') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
@@ -469,17 +580,15 @@ ggplot(cap_rate, aes(x = severity, y = schnabel)) +
 
 **Capture rate at the three treatments:**
 
-
 ```{r capture rate boxplot, echo=FALSE}
 
-# Boxplot of capture rate by severity
-
 ggplot(cap_rate, aes(x = severity, y = cap_rate)) +
-  geom_boxplot(aes(fill = severity)) +
-  scale_fill_manual(values = colors) +
-  theme_minimal() +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
   labs(x = 'Fire Severity',
-       y = 'Capture Rate (%)') +
+       y = 'Population Size (n)') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
@@ -488,9 +597,19 @@ ggplot(cap_rate, aes(x = severity, y = cap_rate)) +
 - Capture rate calculated as the number of unique individuals captured divided by the Schnabel estimate of population size.
 - All but three sites had a capture rate >75%.
 
+
 ```{r eval=FALSE}
 
-rmarkdown::render('code/03_abundance.Rmd', output_file = '../docs/03_abundance.html')
+# Export abundance data
 
+abundance_dat <- full_join(abundance, pema) %>% 
+  full_join(sotr)
+
+write_csv(abundance_dat, 'output_data/abundance.csv', col_names = TRUE)
+
+```
+
+```{r eval=FALSE}
+rmarkdown::render('code/03_abundance.Rmd', output_file = '../docs/03_abundance.html')
 ```
 
