@@ -1,7 +1,6 @@
 ---
 title: "Multivariate GLM"
 author: "Kate Culhane"
-date: "February 28, 2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -9,7 +8,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+knitr::opts_chunk$set(include = FALSE, warning = FALSE, message = FALSE,
                       fig.width=7, fig.height=5)
 ```
 
@@ -17,42 +16,33 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data, include=FALSE}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
-library(ggbiplot)
-library(randomForest)
-library(packfor)
+# library(ggbiplot)
+# library(randomForest)
+# library(packfor)
 library(mvabund)
-library(corrplot)
+# library(corrplot)
 library(vegan)
 
 # Update functions
 
-rename <- dplyr::rename
-select <- dplyr::select
+# rename <- dplyr::rename
+# select <- dplyr::select
 
-# Load necessary data
+# Load data
 
 matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-habitat_metrics <- read_csv('output_data/habitat_metrics.csv') %>% 
+veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
 site_centroids <- read_csv('output_data/site_centroids.csv')
 
-diversity <- read_csv('output_data/diversity.csv') %>% 
-  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-
-```
-
-```{r data wrangling}
-
-# Transform data frames into matrices
-
-matrix <- as.matrix(matrix_df[-c(1,2)])
-rownames(matrix) <- matrix_df$site
+# diversity <- read_csv('output_data/diversity.csv') %>% 
+#   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
 ```
 
@@ -70,319 +60,143 @@ pcnm_vectors <- as.data.frame(site_pcnm$vectors) %>%
 
 # All predictor variables
 
-pred_vars <- full_join(habitat_metrics, pcnm_vectors) 
+vars <- full_join(veg_metrics[,c(1:4,7,9)], pcnm_vectors)
 
 ```
 
-### Correlation plot for all habitat predictor variables
+### Multivariate GLM
 
-#### Pearson's correlations for continuous variables
+Misc. resources:
+http://eco-stats.blogspot.com/2012/03/introducing-mvabund-package-and-why.html
+https://www.dropbox.com/s/unwd412a9wbkrl0/mvabundTute.R?dl=0
+https://rdrr.io/cran/mvabund/man/anova.manyglm.html
+http://www.seec.uct.ac.za/sites/default/files/image_tool/images/330/SEEC%20Toolbox%20mvabund.pdf
 
-```{r habitat variable correlations}
-
-# Create a correlation matrix
-
-habitat_cor <- pred_vars[3:16] %>% 
-  cor(., method = 'pearson') # create correlation matrix
-
-# Visualize the correlation matrix
-
-corrplot(habitat_cor,
-         type = 'upper',
-         order = 'hclust', # order variables by cluster
-         tl.col = 'black',
-         tl.cex = 0.8)
-
-# Rank correlations
-
-as.data.frame(habitat_cor) %>% 
-  mutate(variable1 = rownames(habitat_cor)) %>%
-  gather(variable2, cor_strength, 1:14) %>% 
-  filter(cor_strength != 1,
-         cor_strength > 0.7 | cor_strength < -0.7) %>% 
-  arrange(cor_strength) %>% 
-  distinct(cor_strength, .keep_all = TRUE)
-
-# Refined predictor variables
-
-pred_vars2 <- select(pred_vars, -shrub_bm, -fire_score, -biomass_score, -diversity_score)
-
-```
-
-- Shrub biomass is very closely correlated with both forb biomass and veg cover, so it was removed from analyses
-
-<br>
-
-### Forward selection on remaining variables
-
-```{r forward selection, include=FALSE}
-
-# Forward selection using refined predictor variables
-
-var_matrix <- as.matrix(pred_vars2[,3:16])
-rownames(var_matrix) <- pred_vars$site
-
-hab_fs <- forward.sel(matrix, var_matrix,
-                      alpha = 0.1) # manually set alpha
-
-```
-
-```{r forward selection results}
-
-# Forward selection results
-
-hab_fs
-
-# dist_to_edge p = 0.013
-# tree_H p = 0.057
-# tree_density p = 0.098
-# shrub_H p = 0.054
-
-```
-
-<br>
-
-### Variance partitioning using variables from forward selection
-
-```{r variance partitioning}
-
-# Variance partitioning using variables from forward selection
-
-hab_varpart <- varpart(matrix, ~dist_to_edge, ~tree_H, ~tree_density, ~shrub_H, data = pred_vars2)
-
-hab_varpart_frac <- hab_varpart$part
-hab_varpart$call
-hab_varpart_frac$fract
-
-```
-
-<br>
-
-### Multivariate GLM (mvGLM) for community composition
+Whether to use anova() or summary(): https://stats.stackexchange.com/questions/59879/logistic-regression-anova-chi-square-test-vs-significance-of-coefficients-ano
+Wald vs score statistic:https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-are-the-likelihood-ratio-wald-and-lagrange-multiplier-score-tests-different-andor-similar/
 
 **Hypothesis predictor variables:**
 
 - *Cover resources:*
-  - Vegetation cover
-  - Litter cover
-  - Coarse woody debris volume
-- *Food resources:*
-  - Forb biomass
-  - Shrub biomass
-  - Tree biomass
-- *Other:*
-  - Fire severity categories
-  - Random effect - Principle Components of Neighborhood Matrix (PCNM)
-
-```{r hypothesis predictor variables}
-
-# Hypothesis predictor variables
-
-hyp_vars <- pred_vars %>%
-  select(site, severity, pcnm_1, tree_bm, shrub_bm, forb_bm, veg_cover, litter_cover, cwd_volume)
-
-```
-
-#### Pearson correlations
-
-```{r fig.height=3}
-
-# Create a correlation matrix
-
-hypothesis_cor <- hyp_vars[3:9] %>% 
-  cor(., method = 'pearson') # create correlation matrix
-
-# Visualize the correlation matrix
-
-corrplot(hypothesis_cor,
-         type = 'upper',
-         order = 'hclust', # order variables by cluster
-         tl.col = 'black',
-         tl.cex = 0.8)
-
-# Rank correlations
-
-as.data.frame(hypothesis_cor) %>% 
-  mutate(variable1 = rownames(hypothesis_cor)) %>%
-  gather(variable2, cor_strength, 1:7) %>% 
-  filter(cor_strength != 1,
-         cor_strength > 0.7 | cor_strength < -0.7) %>% 
-  arrange(cor_strength) %>% 
-  distinct(cor_strength, .keep_all = TRUE)
-
-```
-
-#### Spearman's rank correlations including fire severity
+  - Shrub cover
+  - Loose litter cover
+  - Live tree density
+  - "Random effect" - Principle Components of Neighborhood Matrix (PCNM)
 
 ```{r}
-# Create a correlation matrix
-hypothesis_cor_s <- hyp_vars[-1] %>% 
-  mutate(severity = case_when(
-    severity=='unb' ~ 1,
-    severity=='mod' ~ 2,
-    severity=='high' ~ 3)) %>% # code severity as 1,2,3
-  cor(., method = 'spearman') # create correlation matrix
-
-# Visualize the correlation matrix
-
-corrplot(hypothesis_cor_s,
-         type = 'upper',
-         order = 'hclust', # order variables by cluster
-         tl.col = 'black',
-         tl.cex = 0.8)
-
-# Rank correlations
-
-as.data.frame(hypothesis_cor_s) %>% 
-  mutate(variable1 = rownames(hypothesis_cor_s)) %>%
-  gather(variable2, cor_strength, 1:7) %>% 
-  filter(cor_strength != 1,
-         cor_strength > 0.7 | cor_strength < -0.7) %>% 
-  arrange(cor_strength) %>% 
-  distinct(cor_strength, .keep_all = TRUE)
-
-# Refined predictor variables
-
-hyp_vars2 <- select(hyp_vars, -shrub_bm, -tree_bm, -forb_bm)
-
-```
-
-- Shrub biomass is very closely correlated with both forb biomass and veg cover, so it was removed from analyses
-- Tree biomass and litter cover are both highly correlated with severity, so removed from analyses
-
-<br>
-
-```{r mvabund data wrangling and visualization, include=FALSE}
-
-# Data wrangling
-
-dat_mvabund <- full_join(matrix_df[-2], hyp_vars2)
 
 # Create mvabund object using species matrix
-
-spp_mvabund <- mvabund(dat_mvabund[2:7])
-
-# Visualize abundance data
-
-boxplot(dat_mvabund[2:12],horizontal = TRUE,las=2, main="Abundance")
+dat <- full_join(vars, matrix_df)
+spp <- mvabund(dat[,8:18])
 
 # Compare relationship between means and variances
-
-meanvar.plot(spp_mvabund) # looks like a linear increase...
+meanvar.plot(spp) # looks like a linear increase...
 # need to use appropriate GLM that assumes a similar mean-variance relationship
 # negative binomial distribution is best for a linear mean-variance relationship
 
-```
-
-#### Univariate mvGLM results 
-
-One model for each hypothesis predictor variable
-
-**Cover resources:**
-
-```{r univariate mvGLM cover}
-
-### COVER RESOURCES
-
-# Veg cover
-mvglm_veg <- manyglm(spp_mvabund ~ dat_mvabund$veg_cover, family = 'negative binomial')
-anova(mvglm_veg) # p = 0.071
-
-# CWD volume
-mvglm_cwd <- manyglm(spp_mvabund ~ dat_mvabund$cwd_volume, family = 'negative binomial')
-anova(mvglm_cwd) # 0.159
+plot(data=dat, spp~severity)
 
 ```
-
-- No significant variables
 
 <br>
 
-**Food resources:**
-
-```{r univariate mvGLM food}
-
-### FOOD RESOURCES
-
-# Forb biomass
-mvglm_forb_bm <- manyglm(spp_mvabund ~ dat_mvabund$forb_bm, family = 'negative binomial')
-anova(mvglm_forb_bm) # p = 0.572
-
-
-```
-
-- No significant variables
-
-<br>
-
-**Other:**
+### Severity effects
 
 ```{r}
 
-### OTHER
-
-# PCNM ('random effect')
-mvglm_pcnm_1 <- manyglm(spp_mvabund ~ dat_mvabund$pcnm_1, family = 'negative binomial')
-anova(mvglm_pcnm_1) # p = 0.108
-
-# Fire severity categories
-mvglm_fire <- manyglm(spp_mvabund ~ dat_mvabund$severity, family = 'negative binomial')
-anova(mvglm_fire) # p = 0.002
+# Test for differences by severity/block
+# Does treatment have an effect on assemblage?
+# anova() determines which predictors are the strongest contributors by sequentially adding them to the restricted (less variables) model (for test=score)
+# (confirming the adonis results and nmds visualization)
+set.seed(7)
+glm <- manyglm(data=dat, spp~severity*block,
+               family='negative_binomial')
+plot(glm)
+coef(glm)
+set.seed(7)
+an <- anova(glm,
+            test='score', # use score statistic since means are small because of rare species, which decreases power in the Wald statistic
+            cor.type='R', # accounts for correlation between variables, can be used because N (number of observations) >  p (number of variables)
+            nBoot=999)
+an$table
 
 ```
 
-- Fire severity categories are significant (p = 0.002)
-- Random effect (PCNM) is not significant
+                   Res.Df Df.diff score Pr(>score)  
+    (Intercept)        26                           
+    severity           24       2 29.76      0.048 *
+    block              22       2 21.63      0.075 .
+    severity:block     18       4 35.98      0.083 .
 
 <br>
 
-**Fire severity categories, by species:**
+### Indicator species
 
 ```{r}
 
-# Univariate mvGLM, results separated by species
-
-anova(mvglm_fire, p.uni="adjusted")
-# severity PEMA p = 0.016
-# severity SOTR p = 0.001
+# Test univariate (species) differences by severity/block
+# What are the indicator species?
+set.seed(7)
+an2 <- anova(glm, test='score', cor.type='R', nBoot=999, p.uni='adjusted')
+an2
 
 ```
 
-- Fire severity categories significantly predict PEMA (p = 0.020) and SOTR (p = 0.001)
+                    GLSA             NEAM             NEFU             NEQU           
+                   score Pr(>score) score Pr(>score) score Pr(>score) score Pr(>score)
+    severity           4      0.326 1.075      0.921 2.243      0.781 1.615      0.921
+    block              4      0.563 2.677      0.732 2.782      0.732 1.876      0.841
+    severity:block     0      0.766     0      0.766 0.286      0.705 4.434      0.395
+
+                    NESE             OTBE             PEBO              PEMA           
+                   score Pr(>score) score Pr(>score) score Pr(>score)  score Pr(>score)
+    severity       1.973      0.921 1.566      0.921 3.692      0.459 11.043      0.011
+    block          2.654      0.732 3.126      0.719 2.826      0.732  6.897      0.097
+    severity:block 0.565      0.705 5.405      0.269  6.88      0.194  9.343      0.160
+
+                    PETR             REME             SOTR           
+                   score Pr(>score) score Pr(>score) score Pr(>score)
+    severity           1      0.921 1.197      0.921 9.766      0.011
+    block              1      0.860 1.337      0.860 1.131      0.860
+    severity:block     2      0.406     0      0.706 3.537      0.395
 
 <br>
 
-#### Multi-variable mvGLM results
+### Vegetation drivers
 
-**All hypothesis predictor variables:**
+```{r}
 
-```{r multivariable mvGLM}
-
-# Multi-variable mvGLM with ALL hypothesis predictor variables
-
-mvglm_all <- manyglm(spp_mvabund ~ dat_mvabund$severity + dat_mvabund$litter_cover + dat_mvabund$veg_cover + dat_mvabund$cwd_volume + dat_mvabund$pcnm_1,
-                  family = 'negative binomial') 
-#plot(mvglm_all) # residuals are evenly distributed
-anova(mvglm_all)
-# severity p = 0.002
-# pcnm_1 p = 0.018
-# litter_cover p = 0.053
+# Test vegetation variables
+# Which environmental variables are most strongly associated with assemblages?
+# summary() determines which predictors are the strongest contributors when all other predictors have been fitted to the restricted (less variables) model (for test=score)
+set.seed(7)
+glm2 <- manyglm(data=dat, spp~live_tree_density+loose_cover+shrub_cover,
+               family='negative_binomial')
+plot(glm2)
+coef(glm2)
+set.seed(7)
+sum <- summary(glm2, test='score', cor.type='R', nBoot=999)
+sum$coefficients
+sum$statistic
 
 ```
 
+                      score value Pr(>score)
+    (Intercept)          33.56357      0.016
+    shrub_cover          17.24493      0.033
+    loose_cover          13.02669      0.217
+    live_tree_density    17.08897      0.036
 
-dat_mvabund$severity         24       2 49.02    0.001 ***
-dat_mvabund$litter_cover     23       1 19.62    0.026 *  
-dat_mvabund$veg_cover        22       1 10.51    0.323    
-dat_mvabund$cwd_volume       21       1  5.54    0.680    
-dat_mvabund$pcnm_1           20       1 18.98    0.069 .
+    Test statistic:  47.03, p-value: 0.034 
 
-- fire severity categories (p = 0.001) are significant
-- pcnm is significant (p = 0.009)
+<br>
+
+### Traits
+
+SHOULD I ALSO DO THIS FOR TRAITS?!
+https://rpubs.com/dwarton/68823
 
 ```{r eval=FALSE}
-
 rmarkdown::render('code/09_mvglm.Rmd', output_file = '../docs/09_mvglm.html')
-
 ```
 

@@ -20,6 +20,8 @@ library(tidyverse)
 library(cowplot) # plot_grid function
 library(dunn.test)
 library(ggbiplot)
+library(rstatix)
+library(ggpubr)
 
 # Update functions
 
@@ -28,6 +30,8 @@ summarize <- dplyr::summarize
 mutate <- dplyr::mutate
 
 # Load data
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv')
 
 spatial <- read_csv('output_data/spatial_metrics.csv')
 
@@ -49,6 +53,14 @@ evc_2014 <- read_csv('output_data/EVC_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
 
+evc_2012_pixels <- read_csv('output_data/EVC_2012_pixels.csv')
+evc_2014_pixels <- read_csv('output_data/EVC_2014_pixels.csv')
+
+# vectors
+
+year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
+names(year.labs) <- c("2012", "2014")
+
 ```
 
 <br>
@@ -59,6 +71,8 @@ evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
 
 ```{r, include=FALSE}
 
+# Existing Vegetation Cover (EVC)
+
 # 2012 (pre-disturbance)
 evc_12 <- evc_2012 %>% 
   group_by(severity) %>%
@@ -68,7 +82,7 @@ evc_12 <- evc_2012 %>%
          prop = persev/total) %>% 
   filter(prop > 0.01) %>% # delete habitats that represent <1% of habitat sampled
   summarize(sum = sum(n)) %>% 
-  inner_join(evc_12_meta, by = c('evc' = 'VALUE')) # add metadata
+  inner_join(evc_12_meta[,1:2], by = c('evc' = 'VALUE')) # add metadata
 
 # 2014 (post-disturbance)
 evc_14 <- evc_2014 %>% 
@@ -85,6 +99,7 @@ evc_14 <- evc_2014 %>%
 
 ```{r, include=FALSE}
 
+# EVC plot
 evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>% 
   rename('2012'=sum.x, '2014'=sum.y, EVC=CLASSNAMES) %>% 
   select(severity, EVC, '2012', '2014') %>% 
@@ -94,7 +109,7 @@ evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>%
     scale_fill_manual(name = '% Cover of the Dominant Lifeform',
                       values = c('#ffce8a','#e89a61',
                                  '#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32'),
-                      labels = c('Forb: 20-30%',
+                      labels = c('Herb: 20-30%',
                                  'Shrub: 50-60%',
                                  'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
                                  'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
@@ -107,7 +122,7 @@ evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>%
           axis.title.y = element_text(size = 11),
           axis.text.x = element_blank(),
           axis.text.y = element_text(size = 12, color = 'black'),
-          legend.text = element_text(size = 10),
+          legend.text = element_text(size = 11),
           legend.justification = c(0,0),
           strip.text.x = element_text(size = 12, face = 'bold'),
           plot.margin = unit(c(5,5,5,20), 'pt')) +
@@ -117,15 +132,9 @@ evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>%
     
 ```
 
-```{r, fig.height=5.5, fig.width=6}
-
-plot_grid(evc_plot, evt_plot,
-          ncol = 1, align = 'v',
-          rel_heights = c(1, 1))
-
-```
-
 ```{r, include=FALSE}
+
+# Existing Vegetation Type (EVT)
 
 # 2012 (pre-disturbance)
 evt_12 <- evt_2012 %>% 
@@ -153,19 +162,18 @@ evt_14 <- evt_2014 %>%
 
 ```{r, include=FALSE}
 
-year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
-names(year.labs) <- c("2012", "2014")
-
+# EVT plot
 evt_plot <- full_join(evt_12, evt_14, by = c('severity', 'CLASSNAME')) %>% 
   rename('2012'=sum.x, '2014'=sum.y, EVT=CLASSNAME) %>% 
   select(severity, EVT, '2012', '2014') %>% 
-  mutate(EVT = factor(EVT, levels = c('Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland',
-                                      'Mediterranean California Mesic Mixed Conifer Forest and Woodland',
-                                      'California Montane Jeffrey Pine(-Ponderosa Pine) Woodland',
-                                      'Mediterranean California Red Fir Forest',
-                                      'California Montane Riparian Systems',
-                                      'California Montane Woodland and Chaparral',
-                                      'North Pacific Montane Grassland'))) %>%
+  mutate(EVT = factor(EVT, levels = c(
+    'Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland',
+    'Mediterranean California Mesic Mixed Conifer Forest and Woodland',
+    'California Montane Jeffrey Pine(-Ponderosa Pine) Woodland',
+    'Mediterranean California Red Fir Forest',
+    'California Montane Riparian Systems',
+    'California Montane Woodland and Chaparral',
+    'North Pacific Montane Grassland'))) %>%
   gather(year, pixels, 3:4) %>% 
   ggplot(aes(x = severity, y = pixels, fill = EVT)) +
     geom_bar(position = 'fill', stat = 'identity') +
@@ -200,11 +208,22 @@ evt_plot <- full_join(evt_12, evt_14, by = c('severity', 'CLASSNAME')) %>%
 
 ```
 
+```{r, fig.height=5.5, fig.width=6}
+
+# Combined plot: EVC, EVT
+plot_grid(evc_plot, evt_plot,
+          ncol = 1, align = 'v',
+          rel_heights = c(1, 1))
+
+```
+
 <br>
 
 #### Existing Vegetation Cover and California Wildlife Habitat Relationships
 
 ```{r}
+
+# California Wildlife Habitat Relationships (CWHR)
 
 # Crosswalking from EVT to CWHR data
 cwhr_2012 <- left_join(evt_2012, crosswalk)
@@ -234,6 +253,7 @@ cwhr_14 <- cwhr_2014 %>%
 
 ```{r, include=FALSE}
 
+# CWHR plot
 year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
 names(year.labs) <- c("2012", "2014")
 
@@ -280,6 +300,7 @@ cwhr_plot <- full_join(cwhr_12, cwhr_14, by = c('severity', 'cwhr')) %>%
 
 ```{r, fig.height=5.5, fig.width=6}
 
+# Combined plot: EVC, CWHR
 plot_grid(evc_plot, cwhr_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1, 1.1))
@@ -288,6 +309,297 @@ ggsave('figs/fig1C.png', plot = last_plot(),
        width = 6, height = 5.5, units = 'in')
 
 ```
+
+<br>
+
+#### For each block
+
+- Block 1: Devil's Peak
+  - GRNCAR, GRNKAN, GRNWOO, HICOWS, MIXDP2, MIXMID, MIXRAV HISQUE, HIWALK
+- Block 2: Belt
+  - GRNHOU, GRNMAS, GRNTUR, MIXBUS, MIXMIX, MIXMOR, HICORN, HIDODD, HITEDD
+- Block 3: High Meadows
+  - GRNDAM, GRNQUA, GRNSNO, MIXBUT, MIXRIV, MIXWAT, HIBADR, HICAMP, HISHRU
+
+```{r}
+
+# Existing Vegetation Cover (EVC)
+evc_block <- full_join(evc_2012, site_meta)%>% 
+  left_join(evc_12_meta, by = c('evc' = 'VALUE')) %>% 
+  mutate(block=factor(block, levels=c('dp','belt','hm'))) %>% 
+  group_by(block) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(block, CLASSNAMES) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>%
+  summarize(sum = sum(n))
+
+# Plot
+evc_block %>% 
+  ggplot(aes(x = block, y = sum, fill = CLASSNAMES)) +
+    geom_bar(position = 'fill', stat = 'identity') +
+    scale_fill_manual(name = '% Cover of the Dominant Lifeform',
+                      values = c('#e89a61',
+                                 '#c7e9c0','#a1d99b','#74c476',
+                                 '#41ab5d','#238b45','#005a32'),
+                      labels = c('Shrub: 50-60%',
+                                 'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
+                                 'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
+    labs(y = 'Proportional Area') +
+    scale_x_discrete(labels = c('1: Devil\'s\nPeak','2: Belt','3: High\nMeadows')) +
+    scale_y_continuous(expand = c(0,0),
+                       labels = c(0,25,50,75,100)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.y = element_text(size = 12),
+          axis.text.x = element_text(size = 11, color = 'black', angle = 90, vjust = 0.5),
+          axis.text.y = element_text(size = 11, color = 'black'),
+          legend.text = element_text(size = 11),
+          legend.justification = c(0,1)) +
+  expand_limits(y = 1.1)
+
+```
+
+```{r, fig.height=3, fig.width=8.1}
+
+# Existing Vegetation Type (EVT)
+evt_block <- full_join(evt_2012, site_meta)%>% 
+  left_join(evt_12_meta, by = c('evt' = 'VALUE')) %>% 
+  mutate(block=factor(block, levels=c('dp','belt','hm'))) %>% 
+  mutate(CLASSNAME = factor(CLASSNAME, levels = c(
+    'Mediterranean California Dry-Mesic Mixed Conifer Forest and Woodland',
+    'Mediterranean California Mesic Mixed Conifer Forest and Woodland',
+    'California Montane Jeffrey Pine(-Ponderosa Pine) Woodland',
+    'Mediterranean California Red Fir Forest',
+    'California Montane Riparian Systems',
+    'California Montane Woodland and Chaparral'))) %>% 
+  group_by(block) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(block, CLASSNAME) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>%
+  summarize(sum = sum(n))
+
+# Plot
+evt_block %>% 
+  ggplot(aes(x = block, y = sum, fill = CLASSNAME)) +
+    geom_bar(position = 'fill', stat = 'identity') +
+    scale_fill_manual(name = 'Existing Vegetation Type (EVT)',
+                      values = c('#9C9C00','#696900','#1DA300','#136700',
+                                 '#6baed6',
+                                 '#8c2d04')) +
+    labs(y = 'Proportional Area') +
+    scale_x_discrete(labels = c('1: Devil\'s\nPeak','2: Belt','3: High\nMeadows')) +
+    scale_y_continuous(expand = c(0,0),
+                       labels = c(0,25,50,75,100)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.y = element_text(size = 12),
+          axis.text.x = element_text(size = 11, color = 'black', angle = 90, vjust = 0.5),
+          axis.text.y = element_text(size = 11, color = 'black'),
+          legend.text = element_text(size = 11),
+          legend.justification = c(0,1)) +
+  expand_limits(y = 1.1)
+
+```
+
+```{r}
+
+# California Wildlife Habitat Relationships (CWHR) - 2012
+cwhr_block <- full_join(evt_2012, site_meta) %>% 
+  left_join(crosswalk) %>% 
+  mutate(block=factor(block, levels=c('dp','belt','hm'))) %>% 
+  group_by(block) %>% 
+  mutate(total = sum(n)) %>% 
+  group_by(block, cwhr) %>% 
+  mutate(persev = sum(n),
+         prop = persev/total) %>% 
+  filter(prop > 0.01) %>%
+  summarize(sum = sum(n))
+
+# Plot
+cwhr_block %>% 
+  mutate(cwhr = factor(cwhr, levels = c('Montane chaparral',
+                                        'Montane riparian',
+                                        'Ponderosa pine/Jeffrey pine/Eastside pine',
+                                        'Red fir',
+                                        'Sierran mixed conifer forest/White fir/Douglas fir'))) %>%
+  ggplot(aes(x = block, y = sum, fill = cwhr)) +
+    geom_bar(position = 'fill', stat = 'identity') +
+    scale_fill_manual(name = 'CWHR Habitat Type',
+                      values = c('#DD9C33', '#6baed6',
+                                 '#79BC2D', '#6F8932', '#ACBA2E'),
+                      labels = c('Montane chaparral',
+                                 'Montane riparian',
+                                 'Ponderosa/Jeffrey pine',
+                                 'Red fir',
+                                 'Sierran mixed conifer forest')) +
+    labs(y = 'Proportional Area') +
+    scale_x_discrete(labels = c('1: Devil\'s\nPeak','2: Belt','3: High\nMeadows')) +
+    scale_y_continuous(expand = c(0,0),
+                       labels = c(0,25,50,75,100)) +
+    theme_classic() +
+    theme(axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.y = element_text(size = 12),
+          axis.text.x = element_text(size = 11, color = 'black', angle = 90, vjust = 0.5),
+          axis.text.y = element_text(size = 11, color = 'black'),
+          legend.text = element_text(size = 11),
+          legend.justification = c(0,1)) +
+  expand_limits(y = 1.1)
+
+```
+
+<br>
+
+#### Stats on EVC
+
+```{r}
+
+# Filtering for tree only
+tree_12 <- full_join(evc_2012_pixels, site_meta[,2:4]) %>% 
+  left_join(evc_12_meta[,1:2], by = c('evc' = 'VALUE')) %>% 
+  mutate(
+    class = case_when(
+      grepl('Shrub', CLASSNAMES) ~ 'Dominant-other',
+      grepl('Herb', CLASSNAMES) ~ 'Dominant-other',
+      TRUE ~ CLASSNAMES),
+    class = factor(class),
+    year = 'prefire') %>% 
+  select(-evc, -CLASSNAMES) %>% 
+  na.omit(.)
+classes <- levels(tree_12$class)
+tree_12 <- tree_12 %>% 
+  mutate(dummy = case_when(
+    class==classes[1] ~ 1,
+    class==classes[2] ~ 2,
+    class==classes[3] ~ 3,
+    class==classes[4] ~ 4,
+    class==classes[5] ~ 5,
+    class==classes[6] ~ 6,
+    class==classes[7] ~ 7,
+    class==classes[8] ~ 8
+  ))
+
+tree_14 <- full_join(evc_2014_pixels, site_meta[,2:4]) %>% 
+  left_join(evc_14_meta[,1:2], by = c('evc' = 'VALUE')) %>% 
+  mutate(
+    class = case_when(
+      grepl('Shrub', CLASSNAMES) ~ 'Dominant-other',
+      grepl('Herb', CLASSNAMES) ~ 'Dominant-other',
+      TRUE ~ CLASSNAMES),
+    class = factor(class),
+    year = 'postfire') %>% 
+  select(-evc, -CLASSNAMES) %>% 
+  na.omit(.)
+classes <- levels(tree_14$class)
+tree_14 <- tree_14 %>% 
+  mutate(dummy = case_when(
+    class==classes[1] ~ 1,
+    class==classes[2] ~ 2,
+    class==classes[3] ~ 3,
+    class==classes[4] ~ 4,
+    class==classes[5] ~ 5,
+    class==classes[6] ~ 6,
+    class==classes[7] ~ 7,
+    class==classes[8] ~ 8
+  ))
+
+tree <- rbind(tree_12, tree_14)
+
+```
+
+**Comparing pre vs post fire**
+
+```{r}
+
+# Check assumptions
+ggplot(tree, aes(x=dummy)) +
+  geom_histogram() +
+  facet_wrap(~severity)
+
+# Wilcoxon ranked sum test
+tree_unb <- tree %>% 
+  filter(severity=='unb') %>% 
+  wilcox_test(dummy ~ year)
+tree_mod <- tree %>% 
+  filter(severity=='mod') %>% 
+  wilcox_test(dummy ~ year)
+tree_high <- tree %>% 
+  filter(severity=='high') %>% 
+  wilcox_test(dummy ~ year)
+tree_unb
+tree_mod
+tree_high
+
+p.adjust(c(tree_unb$p, tree_mod$p, tree_high$p), method='bonferroni')
+
+# unb: 0.573
+# mod: 2.673e-36
+# high: 9.810e-298
+
+tree %>% filter(severity=='unb') %>% wilcox_effsize(dummy~year)
+# effsize 0.0391, n=1120 (small)
+tree %>% filter(severity=='mod') %>% wilcox_effsize(dummy~year)
+# effsize 0.328, n=1488 (moderate)
+tree %>% filter(severity=='high') %>% wilcox_effsize(dummy~year)
+# effsize 0.941, n=1537 (large)
+
+```
+
+- Used Wilcoxon ranked sum test because the data is ordinal
+- Bonferroni correction for multiple comparisons
+
+**Comparing three severities pre-fire vs. postfire**
+
+```{r}
+
+# Kruskal-Wallis ranked sum test
+tree_2012 <- tree_12 %>% 
+  kruskal_test(dummy ~ severity)
+tree_2014 <- tree_14 %>% 
+  kruskal_test(dummy ~ severity)
+tree_2012
+tree_2014
+
+p.adjust(c(tree_2012$p, tree_2014$p), method='bonferroni')
+# 2012: p=0.00424
+# 2014: p=0.00000...
+
+tree_12 %>% kruskal_effsize(dummy~severity)
+# effsize 0.00564, n=1830 (small)
+tree_14 %>% kruskal_effsize(dummy~severity)
+# effsize 0.663, n=2315 (large)
+
+dunn_test(tree_14, dummy~severity, p.adjust.method = 'bonferroni')
+# all p<0.0000000000000000001
+
+```
+
+- Used Kruskal-Wallis ranked sum test because the data is ordinal
+- Bonferroni correction for multiple comparisons
+- Post-hoc by Dunn's test with Bonferroni correction for multiple comparisons
+
+**Comparing three blocks pre-fire**
+
+```{r}
+
+# Kruskal-Wallis ranked sum test
+tree_block <- tree_12 %>% 
+  kruskal_test(dummy ~ block)
+tree_block
+# p=8.67e-24
+
+tree_12 %>% kruskal_effsize(dummy~block)
+# effsize=0.0570, n=1830 (small)
+
+```
+
+- Used Kruskal-Wallis ranked sum test because the data is ordinal
 
 <br>
 
@@ -379,18 +691,23 @@ plot_grid(avg_pixel_plot, tree_mortality_plot, dist_to_edge_plot,
 
 ```{r, eval=FALSE}
 
-# Kruskal Wallis
+# Kruskal-Wallis
 
-kruskal.test(avg_pixel ~ severity, data = metrics) # p<0.05
-kruskal.test(tree_mortality ~ severity, data = metrics) # p<0.05
-kruskal.test(dist_to_edge ~ severity, data = metrics) # p<0.05
+# Avg pixel
+kruskal_test(metrics, avg_pixel ~ severity)
+# p<0.0000001
+kruskal_effsize(metrics, avg_pixel ~ severity)
+# effsize=0.891, n=27 (large)
+dunn_test(metrics, avg_pixel ~ severity, p.adjust.method = 'bonferroni')
+# unb/mod: p=0.468, unb/high: p=0.00000132, mod/high: p=0.468
 
-# Post-hoc pairwise testing with Dunn's test with Bonferroni correction
-
-dunn.test(metrics$avg_pixel, metrics$severity, method = 'bonferroni') # p<0.05 for all
-dunn.test(metrics$tree_mortality, metrics$severity, method = 'bonferroni') # p<0.05 for all
-dunn.test(metrics$dist_to_edge, metrics$severity, method = 'bonferroni') # p<0.05 for unb vs. high, unb vs. mod
-
+# % tree mortality
+kruskal_test(metrics, tree_mortality ~ severity)
+# p<0.000001
+kruskal_effsize(metrics, tree_mortality ~ severity)
+# effsize=0.957, n=27 (large)
+dunn_test(metrics, tree_mortality ~ severity, p.adjust.method = 'bonferroni')
+# unb/mod: p=0.374, unb/high: p=0.00000174, mod/high: p=0.0374
 
 ```
 
@@ -450,6 +767,47 @@ plot_grid(avg_pixel_plot, tree_mortality_plot,
 
 ggsave('figs/fig1D.png', plot = last_plot(),
        width = 3, height = 4, units = 'in')
+
+```
+
+```{r}
+
+colors <- c('darkgreen', 'orange', 'red')
+sevs <- c('Unburned', 'Low-Mod\nSeverity', 'High\nSeverity')
+
+set.seed(3)
+mtbs_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=avg_pixel, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=avg_pixel), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(-0.01,4.5), expand=c(0,0), breaks=c(0,1,2,3,4)) +
+  labs(x='', y='MTBS severity')
+
+set.seed(4)
+tree_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=tree_mortality, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=tree_mortality), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_text(size = 7)) +
+  scale_y_continuous(limits=c(-0.2,100.2), expand=c(0,0), breaks=c(0,25,50,75,100)) +
+  scale_x_discrete(labels=sevs) +
+  labs(x='', y='% tree mortality')
+
+plot_grid(mtbs_plot, tree_plot,
+          ncol = 1, align = 'v',
+          rel_heights = c(1, 1, 1.1))
+
+ggsave('figs/fig1D.png', plot = last_plot(),
+       width = 2, height = 3, units = 'in')
 
 ```
 

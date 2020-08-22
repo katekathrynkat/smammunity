@@ -1,7 +1,6 @@
 ---
 title: "Functional Diversity"
 author: "Kate Culhane"
-date: "December 16, 2018"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -27,7 +26,7 @@ Trait data compiled from:
 
 ```{r packages & data}
 
-# Load necessary packages
+# Load packages
 
 library(tidyverse)
 library(ggmosaic)
@@ -43,7 +42,7 @@ summarize <- dplyr::summarize
 rename <- dplyr::rename
 mutate <- dplyr::mutate
 
-# Load necessary data
+# Load data
 
 smamms <- read_csv('output_data/unique_smamms.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
@@ -99,7 +98,6 @@ phylacine_diet <- semi_join(phylacine, species, by = 'binomial') %>%
 
 ```
 
-
 ```{r mass data wrangling}
 
 # Data frame of the average mass for each unique individual
@@ -112,15 +110,23 @@ capture_mass <- captures %>%
   summarize(avg_mass = mean(weight, na.rm = TRUE)) %>% 
   ungroup()
 
+```
+
+### Individual Components of Functional Diversity
+
+#### Body mass
+
+```{r}
+
 # Data frame of the average mass for each species
 
 species_mass <- capture_mass %>% 
   group_by(binomial) %>% 
   summarize(spp_avg = mean(avg_mass, na.rm = TRUE))
 
-```
+write_csv(species_mass, 'output_data/species_mass.csv', col_names = TRUE)
 
-### Individual Components of Functional Diversity
+```
 
 #### Biomass
 

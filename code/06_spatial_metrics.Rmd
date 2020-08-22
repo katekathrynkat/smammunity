@@ -427,6 +427,7 @@ evc_2012_summary <- evc_2012_pixels %>%
   group_by(site, severity) %>% 
   count(evc)
 write_csv(evc_2012_summary, 'output_data/EVC_2012.csv', col_names = TRUE)
+write_csv(evc_2012_pixels, 'output_data/EVC_2012_pixels.csv', col_names = TRUE)
 
 # EVC 2014
 evc_2014_pixels <- data.frame(site = character(), evc = numeric())
@@ -443,6 +444,7 @@ evc_2014_summary <- evc_2014_pixels %>%
   group_by(site, severity) %>% 
   count(evc)
 write_csv(evc_2014_summary, 'output_data/EVC_2014.csv', col_names = TRUE)
+write_csv(evc_2014_pixels, 'output_data/EVC_2014_pixels.csv', col_names = TRUE)
 
 # EVC 2016
 evc_2016_pixels <- data.frame(site = character(), evc = numeric())

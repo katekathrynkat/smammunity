@@ -369,6 +369,7 @@ richness %>%
 # Check for outliers
 richness %>% group_by(severity) %>% 
   identify_outliers(rarefied_richness)
+# none
 
 # Check for normality
 lm <- lm(rarefied_richness~severity, data=richness)
@@ -384,12 +385,23 @@ plot(lm,1)
 richness %>% levene_test(rarefied_richness~severity)
 # Variance is fine
 
-#ANOVA
+# ANOVA
 aov <- aov(rarefied_richness~severity, data=richness)
 summary(aov)
+# p=0.00357
+cohens_f(aov)
+# effsize=0.77, n=27 (large)
 richness %>% ungroup() %>% 
   tukey_hsd(rarefied_richness~severity)
-cohens_f(aov)
+# unb/mod p=0.357, unb/high p=0.00273, mod/high p=0.0332
+
+# Kruskal-Wallis
+kruskal_test(richness, rarefied_richness~severity)
+# p=0.0131
+kruskal_effsize(richness, rarefied_richness~severity)
+# effsize=0.278, n=27 (large)
+dunn_test(richness, rarefied_richness~severity)
+# unb/mod p=0.223, unb/high p=0.0102, mod/high p=0.0872
 
 ```
 
@@ -474,9 +486,20 @@ diversity %>% levene_test(J~severity)
 #ANOVA
 aov <- aov(J~severity, data=diversity)
 summary(aov)
+# p=0.0445
+cohens_f(aov)
+# effsize=0.60, n=27 (large)
 diversity %>% ungroup() %>% 
   tukey_hsd(J~severity)
-cohens_f(aov)
+# unb/mod p=0.309, unb/high p=0.0375, mod/high p=0.362
+
+# Kruskal-Wallis
+kruskal_test(diversity, J~severity)
+# p=0.068
+kruskal_effsize(diversity, J~severity)
+# effsize=0.141, n=27 (large)
+dunn_test(diversity, J~severity)
+# unb/mod p=0.313, unb/high p=0.0614, mod/high p=0.285
 
 ```
 

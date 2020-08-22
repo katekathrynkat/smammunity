@@ -23,6 +23,7 @@ library(vegan)
 library(goeveg)
 library(pairwiseAdonis)
 library(ggvegan)
+library(ggrepel)
 
 # Update functions
 
@@ -39,7 +40,7 @@ matrix_adj_df <- read_csv('output_data/species_matrix_adj.csv') %>%
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-habitat_metrics <- read_csv('output_data/habitat_metrics.csv') %>% 
+veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
 ```
@@ -54,9 +55,9 @@ rownames(matrix) <- matrix_df$site
 matrix_adj <- as.matrix(matrix_adj_df[-c(1,2)])
 rownames(matrix_adj) <- matrix_adj_df$site
 
-# Create species matrix using relative abundance
+matrix_hell <- decostand(matrix, 'hellinger')
 
-matrix_rel <- decostand(matrix, method = "total")
+matrix_sqrt <- sqrt(matrix)
 
 # Severity data frame
 
@@ -66,37 +67,23 @@ sevs <- select(matrix_df, site, severity)
 
 ### Community structure
 
-```{r nmds, include=FALSE}
+For choosing transformation and standardization methods: https://chrischizinski.github.io/SNR_R_Group/2016-08-10-Data-Transformations
 
-# Choose a distance metric
 
-rankindex(habitat_metrics$severity,
-          wisconsin(matrix_rel),
-          indicies = c('bray', 'euclidean', 'manhattan', 'horn'),
-          method = 'spearman')
-
-# Bray-curtis performs well to separate communities along the fire severity gradient
-# Although Euclidean and Kul also are good?!
+```{r nmds}
 
 # NMDS with relative abundance data (2 dimensions)
-
-ord <- metaMDS(matrix_rel,
+set.seed(17)
+ord <- metaMDS(matrix_adj,
                distance = 'bray',
-               k = 2)
-ord$stress # stress = 0.117
+               autotransform = FALSE,
+               k = 2,
+               try=50)
+ord$stress
 stressplot(ord)
 
-# NMDS with relative abundance data (3 dimensions)
-
-ord2 <- metaMDS(matrix_rel,
-               distance = 'bray',
-               k = 3)
-ord2$stress # stress = 0.066
-stressplot(ord2)
-
 # Scree plot to check stress per number of dimensions
-dimcheckMDS(matrix_rel, distance = "bray", k = 10, trymax = 20)
-# Stress is significantly reduced after 2 dimensions
+dimcheckMDS(matrix_hell, distance = "bray", autotransform = FALSE, k = 10, trymax = 20)
 
 ```
 
@@ -105,41 +92,30 @@ dimcheckMDS(matrix_rel, distance = "bray", k = 10, trymax = 20)
 ```{r nmds plot, echo=FALSE}
 
 cols <- c('darkgreen', 'orange', 'red')
-
 par(mar = c(4,4,1,1))
-
-plot(ord, display = 'sites', type = 'n')
-
+plot(ord, display = 'species', type = 'n')
 points(ord, display = 'sites',
        cex = 1.5, pch = 19, col = cols[sevs$severity])
-
 ordiellipse(ord, groups = sevs$severity,
             label = TRUE, col = cols, lwd = 2)
-
 text(ord, display = 'species',
      cex = 0.6)
-
-title(main = 'NMDS in 2 dimensions')
 
 ```
 
 ```{r ANOSIM and adonis, eval=FALSE}
 
 # Attach severity data to species matrix
-
-matrix_rel
+matrix_hell
 attach(sevs)
 
 # Compare community similarity across fire severities using ANOSIM
-
-smamm_ano <- anosim(matrix_rel, severity)
+smamm_ano <- anosim(matrix_hell, severity)
 summary(smamm_ano)
 plot(smamm_ano)
 
 # Compare community dispersion across fire severities using betadisper
-
-smamm_dist <- vegdist(matrix_rel)
-
+smamm_dist <- vegdist(matrix_hell)
 smamm_bd <- betadisper(smamm_dist, severity)
 
 smamm_bd
@@ -148,34 +124,23 @@ boxplot(smamm_bd)
 
 permutest(smamm_bd)
 anova(smamm_bd)
-
 # p > 0.05 for both --> no difference in dispersion across fire severities
 # Satisfies the assumption for adonis
 
 
-
 # Compare community similarity across fire severities using adonis
 # Adonis is more robust because it is less sensitive to dispersion
-
-smamm_ado <- adonis(matrix_rel ~ severity,
+smamm_ado <- adonis(matrix_hell ~ severity,
                     permuatations = 999,
                     method = 'bray')
 smamm_ado
 
-# p = 0.001 --> communities are significantly different between fire severity treatments
-
-
-
 # Pairwise Adonis
-
-smamm_ado_pw <- pairwise.adonis(matrix_rel, severity)
+smamm_ado_pw <- pairwise.adonis(matrix_hell, severity,
+                                sim.method = 'bray',
+                                p.adjust.m = 'bonferroni')
 
 smamm_ado_pw
-
-# Adjusted p-value (Bonferroni correction)
-# unb vs mod: 0.018
-# unb vs high: 0.003
-# mod vs high: 0.336
 
 ```
 
@@ -201,96 +166,25 @@ smamm_ado_pw
 
 ### Habitat drivers
 
-**Individual habitat drivers of small mammal communities:**
-
-```{r env nmds}
-
-# Fit individual environmental variables
-
-fit <- envfit(ord, habitat_metrics[,3:16], permutations = 1000)
-
-# NMDS plot with arrows for environmental variables
-
-par(mar = c(4,4,1,1))
-plot(ord, display = 'sites', type = 'n')
-points(ord, display = 'sites',
-       cex = 1.5, pch = 19, col = cols[sevs$severity])
-ordiellipse(ord, groups = sevs$severity, # shows se around centroids
-            label = FALSE, col = cols, lwd = 2)
-plot(fit,
-     col = 'black', lwd = 3)
-
-```
-
-- Habitat variables:
-    - *avg_severity* - mean severity of pixels within the site, based on MTBS fire severity data (0-3 = unburned-high severity)
-    - *dist_to_edge* - distance from the site center to the burn boundary (negative for sites outside the burn boundary)
-    - *tree_bm* - density of adult tree biomass (live or dead) (kg/m^2^)
-    - *shrub_bm* - density of live shrub biomass (kg/m^2^)
-    - *grass_bm* - density of live grass biomass (kg/m^2^)
-    - *forb_bm* - density of live forb biomass (kg/m^2^)
-    - *tree_density* - density of trees (live or dead) (indv/m^2^)
-    - *tree_survival* - proportion of live trees (%)
-    - *veg_cover* - total proportion of vegetation cover (all species/life-forms - can sum to >100) (both transects) (%)
-    - *litter_cover* - proportion of litter cover (%)
-    - *cwd_volume* - density of coarse woody debris volume (m^3^/m^2^)
-    - *tree_H* - Shannon diversity of adult trees
-    - *shrub_H* - Shannon diversity of adult trees
-    - *forb_H* - Shannon diversity of adult trees
-
-<br>
-
-**NMDS plot with PCA scores:**
-
-```{r env nmds 2}
-
-# Fit environmental variables
-
-fit2 <- envfit(ord, habitat_metrics[,17:19], permutations = 1000)
-
-# NMDS plot with arrows for environmental variables
-
-par(mar = c(4,4,1,1))
-plot(ord, xlim = c(-1.8,1.8), display = 'sites', type = 'n')
-points(ord, display = 'sites',
-       cex = 1.5, pch = 19, col = cols[sevs$severity])
-ordiellipse(ord, groups = sevs$severity, # by default plots ellipse with std error around centroids
-            label = FALSE, col = cols, lwd = 2)
-plot(fit2,
-     col = 'black', lwd = 3)
-text(ord, display = 'species',
-     cex = 0.7, col = 'grey30')
-
-```
-
-- *fire_score* = avg_severity + dist_to_edge + tree_survival
-- *biomass_score* = tree_bm + shrub_bm + grass_bm + forb_bm
-- *diversity_score* = tree_H + shrub_H + forb_H
-
-<br>
-
-**NMDS plot with best variables from mvGLM:**
+**NMDS plot with variables that changed with fire:**
 
 ```{r model nmds}
 
 # Data frame with only the variables from the model
-
-model_vars <- habitat_metrics %>% 
-  select(site, severity, tree_bm, shrub_bm, forb_bm, veg_cover, litter_cover, cwd_volume)
+model_vars <- veg_metrics %>% 
+  select(site, severity, shrub_cover, loose_cover, live_tree_density)
 
 # Fit environmental variables
-
-fit3 <- envfit(ord, model_vars[,3:8], permutations = 1000)
+fit <- envfit(ord, model_vars[,3:5], permutations = 1000)
 
 # NMDS plot with arrows for environmental variables
-
 par(mar = c(4,4,1,1))
-plot(ord, xlim = c(-1.8,1.2), diplay = 'sites', type = 'n')
+plot(ord, diplay = 'sites', type = 'n')
 points(ord, display = 'sites',
        cex = 1, pch = 19, col = cols[sevs$severity])
-ordiellipse(ord, groups = sevs$severity, # by default plots ellipse with std error around centroids
+ordiellipse(ord, groups = sevs$severity, # ellipse with std error around centroids
             label = FALSE, col = cols, lwd = 2)
-plot(fit3,
+plot(fit,
      col = 'black', lwd = 3, cex = 0.8)
 text(ord, display = 'species',
      cex = 0.7, col = 'grey30')
@@ -316,32 +210,23 @@ site_points <- fortify(ord) %>%
 spp_points <- fortify(ord) %>% 
   filter(Score == 'species')
 
-vectors <- fortify(fit3) %>% 
-  mutate(xend = NMDS1*2,
-         yend = NMDS2*2,
+vectors <- fortify(fit) %>% 
+  mutate(xend=NMDS1*1.35,
+         yend=NMDS2*1.35,
          xlab = case_when(
-           Label == 'tree_bm' ~ xend,
-           Label == 'shrub_bm' ~ xend,
-           Label == 'forb_bm' ~ xend,
-           Label == 'veg_cover' ~ xend,
-           Label == 'litter_cover' ~ xend,
-           Label == 'cwd_volume' ~ xend
+           Label == 'shrub_cover' ~ xend,
+           Label == 'loose_cover' ~ xend,
+           Label == 'live_tree_density' ~ xend-0.26
          ),
          ylab = case_when(
-           Label == 'tree_bm' ~ yend,
-           Label == 'shrub_bm' ~ yend,
-           Label == 'forb_bm' ~ yend,
-           Label == 'veg_cover' ~ yend,
-           Label == 'litter_cover' ~ yend,
-           Label == 'cwd_volume' ~ yend
+           Label == 'shrub_cover' ~ yend+0.05,
+           Label == 'loose_cover' ~ yend-0.04,
+           Label == 'live_tree_density' ~ yend
          ),
          lab = case_when(
-           Label == 'tree_bm' ~ 'Tree biomass',
-           Label == 'shrub_bm' ~ 'Shrub biomass',
-           Label == 'forb_bm' ~ 'Forb biomass',
-           Label == 'veg_cover' ~ 'Understory cover',
-           Label == 'litter_cover' ~ 'Litter cover',
-           Label == 'cwd_volume' ~ 'CWD volume'
+           Label == 'shrub_cover' ~ 'Shrub cover',
+           Label == 'loose_cover' ~ 'Litter cover',
+           Label == 'live_tree_density' ~ 'Tree density'
          ))
 
 # Data frame with ellipse information
@@ -369,42 +254,34 @@ for(g in levels(site_points$group)){
 ```{r}
 
 ggplot() +
-  geom_path(data = df_ell,
-            aes(x = NMDS1, y = NMDS2, color = group),
-            size = 1) +
-  geom_point(data = site_points,
-             aes(x = NMDS1, y = NMDS2, color = group),
-             size = 2) +
-  # geom_text(data = spp_points,
-  #           aes(x = NMDS1, y = NMDS2, label = Label2),
-  #           size = 3, color = 'grey40') +
-  geom_segment(data = vectors[c(4,5,6),],
-               aes(x = 0, y = 0, xend = xend, yend = yend),
-               arrow = arrow(length = unit(0.02, 'npc'), type = 'closed'),
-               size = 0.7) +
-  # geom_segment(data = vectors[5,],
-  #              aes(x = 0, y = 0, xend = xend, yend = yend),
-  #              arrow = arrow(length = unit(0.03, 'npc'), type = 'closed'),
-  #              size = 0.9) +
-  geom_text(data = vectors[c(4,5,6),],
-            aes(x = xlab, y = ylab, label = lab),
-            size = 4) +
-  # geom_text(data = vectors[5,],
-  #           aes(x = xlab, y = ylab, label = lab),
-  #           size = 4, fontface = 'bold') +
-  geom_label(data=site_points, aes(x=0.75,y=0.6,label='NMDS in 2 dim\nstress = 0.12')) +
-  scale_color_manual(values = c('darkgreen', 'orange', 'red')) +
-  scale_x_continuous(limits = c(-0.7,1)) +
-  scale_y_continuous(limits = c(-0.5,0.7)) +
+  geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2, color=group),
+            size=0.6) +
+  geom_point(data=site_points, aes(x=NMDS1, y=NMDS2, color=group, shape=group),
+             size=1.8) +
+  geom_segment(data=vectors, aes(x=0, y=0, xend=xend, yend=yend),
+               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.5) +
+  # geom_text(data=vectors, aes(x=xlab, y=ylab, label=lab),
+  #           size=4) +
+  # geom_text_repel(data=spp_points, aes(x=NMDS1, y=0, label=Label),
+  #                 direction='x', segment.alpha=0, vjust=0,
+  #                 size=3, color='grey40', angle=90) +
+  # geom_text_repel(data=spp_points, aes(x=0, y=NMDS2, label=Label),
+  #                 direction='y', segment.alpha=0, hjust=0,
+  #                 size=3, color='grey40') +
+  geom_label(data=site_points, aes(x=0.6, y=-0.8,
+                                   label='NMDS in 3 dim\n2 dim displayed\nstress = 0.10'),
+             size=4) +
+  scale_color_manual(values=c('darkgreen','orange','red')) +
+  # scale_x_continuous(limits=c(-1.15,0.85)) +
+  # scale_y_continuous(limits=c(-0.95,0.5)) +
   theme_classic() +
-  theme(panel.border = element_rect(fill = NA),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        legend.position = 'none') +
-  coord_fixed()
+  theme(panel.border=element_rect(fill=NA),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        legend.position='none') +
+  coord_fixed(clip='off')
 
-ggsave('figs/fig5b.png', plot = last_plot(),
-       width = 5, height = 3, units = 'in')
+ggsave('figs/fig5b.png', plot=last_plot(),
+       width=4.5, height=3.5, units='in')
 
 ```
 

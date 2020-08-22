@@ -21,8 +21,8 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 library(tidyverse)
 library(rstatix)
 library(ggpubr)
-library(effectsize)
 library(dunn.test)
+library(effectsize)
 library(kableExtra)
 library(calecopal)
 library(fishmethods) # for Schnabel's estimate
@@ -38,9 +38,14 @@ captures <- read_csv('output_data/smamms.csv') %>%
 effort <- read_csv('output_data/effort.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
+mass <- read_csv('output_data/species_mass.csv')
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
 # Vectors for ggplot
 
-cols <- c('darkgreen', 'orange', 'red')
+cols <- c('#4AB793', '#DCA827', '#D85F2B')
 xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
 
 ```
@@ -54,7 +59,8 @@ abundance <- smamms %>%
   tally() %>% # count individuals per site
   full_join(effort) %>% 
   mutate(n_adj = n/effort*300) %>% # add column adjusted for effort
-  ungroup()
+  ungroup() %>% 
+  full_join(site_meta[2:4])
 
 ```
 
@@ -86,15 +92,17 @@ kable(summary[,2:4], col.names = c('Binomial', 'Family', 'Individuals')) %>%
 
 <br>
 
-### Abundance by site
+### Abundance by severity
 
 ```{r}
 
 # Jitterplot with mean/SE
 ggplot(abundance, aes(x = severity, y = n_adj)) +
-  geom_jitter(aes(color = severity)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
   scale_color_manual(values = cols) +
-  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  scale_shape_manual(values=c(1,2,0)) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
+  stat_summary(fun = 'mean', size = 2, geom = 'point') +
   theme_classic() +
   labs(x = 'Fire Severity',
        y = 'Total small mammal abundance') +
@@ -131,18 +139,25 @@ plot(lm,1)
 abundance %>% levene_test(n_adj~severity)
 # Variance is fine
 
-#ANOVA
-aov <- aov(n_adj~severity, data=abundance)
-summary(aov)
-abundance %>% ungroup() %>% 
-  tukey_hsd(n_adj~severity)
-eta_squared(aov)
-cohens_f(aov)
-
 #Kruskal-Wallis
 kruskal_test(n_adj~severity, data=abundance)
+# p=0.0658
 kruskal_effsize(n_adj~severity, data=abundance)
+# effsize=0.143, n=27 (large)
 
+
+
+library(lme4)
+glmm <- glmer(data=abundance, n_adj~severity + (1|block),
+               family=Gamma) # for positive continuous response
+plot(glmm)
+ggqqplot(residuals(glmm))
+shapiro_test(residuals(glmm))
+summary(glmm)
+
+library(jtools)
+effect_plot(glmm, pred=severity,
+            plot.points=TRUE)
 
 ```
 
@@ -153,39 +168,67 @@ Two of these sites look like outliers:
 - HICORN had a ridiculous number of PEMA
 - MIXMOR had a lot of PEMA, OTBE, and SOTR
 
-They make the data violate assumptions for ANOVA (data are not normal), so were removed for the following test.
+<br>
+
+### Biomass by severity
 
 ```{r}
 
-# Removing the two outliers
-abundance2 <- abundance %>% 
-  filter(site!='MIXMOR', site!='HICORN')
+biomass <- full_join(smamms[,1:8], mass) %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass = sum(spp_avg)) %>% # biomass per site
+  full_join(effort) %>% 
+  mutate(bm_adj = biomass/effort*300) %>% # add column adjusted for effort
+  ungroup()
 
 # Jitterplot with mean/SE
-ggplot(abundance2, aes(x = severity, y = n_adj)) +
-  geom_jitter(aes(color = severity)) +
+ggplot(biomass, aes(x = severity, y = bm_adj)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
   scale_color_manual(values = cols) +
-  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  scale_shape_manual(values=c(1,2,0)) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
+  stat_summary(fun = 'mean', size = 2, geom = 'point') +
   theme_classic() +
   labs(x = 'Fire Severity',
-       y = 'Total small mammal abundance') +
+       y = 'Total small mammal biomass') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
-# ANOVA
-aov <- aov(n_adj~severity, data=abundance2)
-summary(aov)
-abundance2 %>% ungroup() %>% 
-  tukey_hsd(n_adj~severity)
-eta_squared(aov)
-cohens_f(aov)
-
 ```
 
-Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Sites HICORN and MIXMOR were removed. Abundance was standardized by trapping effort.
+```{r, eval=FALSE}
 
-- ANOVA F=5.78, p=0.0096
-- Tukey mod vs. high p=0.00706
+# Check summary stats and model assumptions for total abundance per site
+
+# Summary table
+biomass %>% 
+  group_by(severity) %>% 
+  get_summary_stats(bm_adj)
+
+# Check for outliers
+biomass %>% group_by(severity) %>% 
+  identify_outliers(bm_adj)
+# 3 outliers (MIXMOR, HIBADR, HICAMP)
+
+# Check for normality
+lm <- lm(bm_adj~severity, data=biomass)
+ggqqplot(residuals(lm))
+ggqqplot(biomass, "bm_adj", facet.by="severity")
+shapiro_test(residuals(lm))
+# The outliers make the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+biomass %>% levene_test(bm_adj~severity)
+# Variance is fine
+
+#Kruskal-Wallis
+kruskal_test(bm_adj~severity, data=biomass)
+# p=0.484
+kruskal_effsize(bm_adj~severity, data=biomass)
+# effsize=0.0228, n=27 (small)
+
+```
 
 <br>
 
@@ -242,7 +285,7 @@ prop_species <- smamms %>%
   group_by(species, common_name, severity) %>% 
   summarize(n = sum(cpue)) %>% 
   mutate(prop = n/sum(n)*100) %>% # proportion of captures at each treatment, per species
-  mutate(label = common_name) %>% 
+  mutate(label = paste0(common_name,' (',species,')')) %>% 
   ungroup()
 
 prop_low <- prop_species %>%  # data frame for just low severity
@@ -276,7 +319,7 @@ prop_species2 <- prop_species %>% # re-ordering data frame occurence within each
 
 # Column graph of proportional treatment abundances per species
 
-colors <- c('red', 'orange', 'darkgreen')
+colors <- c("#D85F2B", "#DCA827", "#2D9875")
 
 ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
   geom_col() +
@@ -300,7 +343,7 @@ ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
         axis.title.x = element_text(hjust = 3.8, size = 13))
 
 ggsave('figs/fig5a.png', plot = last_plot(),
-       width = 4, height = 3, units = 'in')
+       width = 4.5, height = 3, units = 'in')
 
 ```
 
@@ -399,17 +442,16 @@ pema %>% ungroup() %>%
   levene_test(n_adj_pema~severity)
 # Variance is fine
 
+# Kruskal-Wallis test
 kruskal_test(n_adj_pema~severity, data=pema)
+# p=0.00982
 kruskal_effsize(n_adj_pema~severity, data=pema)
-
-### REMOVE HICORN FOR STATS
-
-# Removing the outlier
-pema2 <- pema %>% 
-  filter(site!='HICORN')
+# effsize=0.302, p=27 (large)
+dunn_test(pema, n_adj_pema~severity)
+# unb/mod p=0.859, unb/high p=0.0197, mod/high p=0.0222
 
 # Jitterplot with mean/SE
-ggplot(pema2, aes(x = severity, y = n_adj_pema)) +
+ggplot(pema, aes(x = severity, y = n_adj_pema)) +
   geom_jitter(aes(color = severity)) +
   scale_color_manual(values = cols) +
   stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
@@ -418,11 +460,6 @@ ggplot(pema2, aes(x = severity, y = n_adj_pema)) +
        y = 'PEMA Abundance') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
-
-# ANOVA
-summary(aov(n_adj_pema~severity, data=pema2))
-pema2 %>% ungroup() %>% 
-  tukey_hsd(n_adj_pema~severity)
 
 ```
 
@@ -477,16 +514,13 @@ sotr %>% ungroup() %>%
   levene_test(n_adj_sotr~severity)
 # Variance is all weird because high sites had no shrews
 
-
-
-
-
-
-### REMOVE HICORN FOR STATS
-
-# Removing the outlier
-sotr2 <- sotr %>% 
-  filter(site!='HICORN')
+# Kruskal-Wallis test
+kw <- kruskal.test(n_adj_sotr~severity, data=sotr)
+# p=0.00009407
+kw$statistic/27 # eta squared = chi square / n
+# effsize=0.686, p=27 (large)
+dunn.test(sotr$n_adj_sotr, sotr$severity)
+# unb/mod p=0.0006, unb/high p=0.0000, mod/high p=0.1929
 
 # Jitterplot with mean/SE
 ggplot(sotr, aes(x = severity, y = n_adj_sotr)) +
@@ -498,15 +532,6 @@ ggplot(sotr, aes(x = severity, y = n_adj_sotr)) +
        y = 'SOTR Abundance') +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
-
-# ANOVA
-summary(aov(n_adj_sotr~severity, data=sotr))
-sotr %>% ungroup() %>% 
-  tukey_hsd(n_adj_sotr~severity)
-
-sotr %>% ungroup() %>% 
-  welch_anova_test(n_adj_sotr~severity)
-
 
 ```
 

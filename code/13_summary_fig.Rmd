@@ -27,12 +27,12 @@ library(cowplot) # plot_grid function
 # Load data
 
 abundance <- read_csv('output_data/abundance.csv')
-
 diversity <- read_csv('output_data/diversity.csv')
-
 FD <- read_csv('output_data/FD_biomass.csv')
-
 PD <- read_csv('output_data/PD.csv')
+
+colors <- c('darkgreen', 'orange', 'red')
+sevs <- c('Unburned', 'Low-Mod\nSeverity', 'High\nSeverity')
 
 ```
 
@@ -45,10 +45,8 @@ metrics <- full_join(abundance, FD) %>%
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')),
          biomass = biomass_total/1000) %>% 
     select(site, severity,
-           n_adj, biomass,
-           n_adj_pema, n_adj_sotr,
-           rarefied_richness, J,
-           FEve, PD)
+           n_adj, biomass, n_adj_pema, n_adj_sotr,
+           rarefied_richness, J, FEve, PD)
 
 # Summary data frame 
 summary <- metrics %>% 
@@ -99,9 +97,68 @@ summary %>%
              strip.position = 'left',
              labeller = labeller(metric = metric_labs))
 
-ggsave('figs/fig2.png', plot = last_plot(),
-       width = 4, height = 3.5, units = 'in')
+```
 
+```{r}
+
+set.seed(2)
+abun_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=n_adj, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=n_adj), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(0,60), expand=c(0,0), breaks=c(0,20,40,60)) +
+  labs(x='', y='Total abundance\n(indv/site)')
+
+set.seed(5)
+biomass_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=biomass, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=biomass), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(0,3.1), expand=c(0,0), breaks=c(0,1,2,3)) +
+  labs(x='', y='Biomass\n(kg/site)')
+
+set.seed(2)
+pema_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=n_adj_pema, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=n_adj_pema), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9)) +
+  scale_y_continuous(limits=c(0,60), expand=c(0,0), breaks=c(0,20,40,60)) +
+  scale_x_discrete(labels=sevs) +
+  labs(x='', y='Deer mouse\nabundance (indv/site)')
+
+set.seed(13)
+sotr_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=n_adj_sotr, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=n_adj_sotr), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9)) +
+  scale_y_continuous(limits=c(0,7), expand=c(0,0), breaks=c(0,2,4,6)) +
+  scale_x_discrete(labels=sevs) +
+  labs(x='', y='Trowbridge\'s shrew\nabundance (indv/site)')
+
+plot_grid(abun_plot, biomass_plot, pema_plot, sotr_plot,
+          ncol = 2, align = 'v',
+          rel_heights = c(1, 1, 1.1, 1.1))
+
+ggsave('figs/fig2.png', plot = last_plot(),
+       width = 5.5, height = 4, units = 'in')
 ```
 
 <br>
@@ -135,6 +192,69 @@ summary %>%
 
 ggsave('figs/fig3.png', plot = last_plot(),
        width = 4, height = 3.5, units = 'in')
+
+```
+
+```{r}
+
+set.seed(24)
+rich_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=rarefied_richness, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=rarefied_richness), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(0,3.3), expand=c(0,0), breaks=c(0,1,2,3)) +
+  labs(x='', y='Rarefied richness')
+
+set.seed(6)
+even_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=J, color=severity), width=0.1, size=1.5, na.rm=TRUE) +
+  geom_boxplot(aes(x=severity, y=J), fill=NA, outlier.shape=NA, na.rm=TRUE) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(0,1.1), expand=c(0,0), breaks=c(0,1,2,3)) +
+  labs(x='', y='Pielou\'s evenness')
+
+set.seed(8)
+function_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=FEve, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=FEve), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9)) +
+  scale_y_continuous(limits=c(0,1), expand=c(0,0), breaks=c(0,0.5,1)) +
+  scale_x_discrete(labels=sevs) +
+  labs(x='', y='FEve')
+
+set.seed(13)
+phylo_plot <- metrics %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=PD, color=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=PD), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=colors) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9)) +
+  scale_y_continuous(limits=c(0,300), expand=c(0,0), breaks=c(0,100,200,300)) +
+  scale_x_discrete(labels=sevs) +
+  labs(x='', y=' Faith\'s PD')
+
+plot_grid(rich_plot, even_plot, function_plot, phylo_plot,
+          ncol = 2, align = 'v',
+          rel_heights = c(1, 1, 1.1, 1.1))
+
+ggsave('figs/fig3.png', plot = last_plot(),
+       width = 5.5, height = 4, units = 'in')
 
 ```
 
