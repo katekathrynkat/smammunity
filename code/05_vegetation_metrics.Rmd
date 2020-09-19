@@ -16,12 +16,13 @@ knitr::opts_chunk$set(eval=FALSE, include=FALSE)
 ```{r packages and data}
 
 # Load packages
-
-library(tidyverse)
 library(vegan)
 library(rstatix)
 library(cowplot)
 library(janitor)
+library(corrplot)
+library(ggbiplot)
+library(tidyverse)
 
 # Load data
 
@@ -42,149 +43,82 @@ tree <- read_csv('raw_data/field_data/veg_transect_tree.csv') %>% clean_names()
 
 ### Vegetation metrics
 
-#### Biomass
-
-- **Tree biomass:** total biomass of all live adult trees for both transects, divided by the transect area (kg/m^2^)
-- **Shrub biomass:** total biomass of all shrubs for both transects, divided by the transect area (kg/m^2^)
-- **Grass biomass:** total biomass of all grass for both transects, divided by the transect area (kg/m^2^)
-- **Forb biomass:** total biomass of all forbs for both transects, divided by the transect area (kg/m^2^)
-
-```{r biomass}
-
-# Tree biomass
-tree_bm <- tree_biomass %>%
-  filter(state != 'D') %>% 
-  group_by(site) %>% 
-  summarize(biomass = sum(biomass)) %>% 
-  mutate(tree_bm = biomass/1500) # biomass per meter squared (total area = 1500 m^2 = 2 transects X 50 m X 15 m)
-
-# Shrub biomass
-shrub_bm <- shrub_biomass %>% 
-  filter(shrub_or_tree == 'Shrub') %>% 
-  group_by(site) %>% 
-  summarize(biomass = sum(biomass)) %>% 
-  mutate(shrub_bm = biomass/500) # biomass per meter squared (total area = 1500 m2 = 2 transects X 50 m X 5 m)
-
-# Grass biomass
-grass_bm <- cover_biomass %>% 
-  filter(cover_type == 'Grass') %>% 
-  group_by(site) %>% 
-  summarize(biomass = sum(live_weight_mean_avg_ratio_l)) %>%
-  mutate(grass_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
-
-# Forb biomass
-forb_bm <- cover_biomass %>% 
-  filter(cover_type == 'Forbs' | cover_type == 'Dominant forb') %>% 
-  group_by(site) %>% 
-  summarize(biomass = sum(live_weight_mean_avg_ratio_l, na.rm = TRUE)) %>%
-  mutate(forb_bm = biomass/20) # biomass per meter squared (total area = 20 m2 = 2 transects X 10 quadrats X 1 m2)
-
-```
-
 #### Tree density/survival
 
-- **Tree density:** number of adult trees (live + dead) at both trasects, divided by the transect area (number/m^2^)
 - **Tree survival:** percent live trees (%)
 - **Live tree density:** number of live adult trees at both transects, divided by the transect area (number/m^2^)
 
 ```{r trees}
 
-# Tree density
-tree_density <- tree %>% 
-  group_by(site, transect) %>% 
-  summarize(n = length(id)) %>% 
-  mutate(tree_density = n/750) # density per meter squared (transect area = 750 m2 = 50 m X 15 m)
-
 # Tree survival
 tree_survival <- tree %>%
-  group_by(site, transect) %>% 
+  group_by(site) %>% 
   mutate(n = length(id)) %>% 
   filter(state != 'D') %>% 
-  group_by(site, transect, n) %>% 
+  group_by(site, n) %>% 
   summarize(live = length(id)) %>% 
   mutate(tree_survival = live/n) %>% 
-  select(site, transect, tree_survival)
+  select(site, tree_survival)
 
 # Live tree density
 live_tree_density <- tree %>% 
   filter(state !='D') %>% 
-  group_by(site, transect) %>% 
+  group_by(site) %>% 
   summarize(n = length(id)) %>% 
-  mutate(live_tree_density = n/750*10000) %>% # density per hectare
+  mutate(live_tree_density = n/1500*10000) %>% # density per hectare
   select(-n)
 
 ```
 
 #### Cover
 
-- **Vegetation cover:** total percent vegetation cover (all species/life-forms) across all quadrats (both transects) (%)
-- **Litter cover:** total percent litter cover (soft loose litter, woody litter, soft rooted litter) across all quadrats (both transects) (%)
 - **Shrub cover:** percent cover of live shrubs
-- **Grass/forb cover:** percent cover of live grass and live forbs combined (%)
-- **Loose litter cover:** percent cover by unrooted litter, e.g. leaves and sticks (%)
-- **Rooted litter cover:** percent cover by rooted litter, e.g. dead grass (%)
+- **Understory cover:** percent cover of live grass and live forbs combined (%)
+- **Litter cover:** percent cover by litter, e.g. leaves, dead grass, small sticks (%)
 
 ```{r cover}
-
-# Vegetation cover
-veg_cover <- cover %>% 
-  filter(type == 'Shrub' | type == 'Tree' |
-           type == 'Dominant forb' | type == 'Forbs' |
-           type == 'Grass') %>% # filter for vegetation only
-  group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover)) %>% # vegetation cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(veg_cover = sum(quad_cover)/10)
-
-# Litter cover
-litter_cover <- cover %>% 
-  filter(type == 'Soft loose litter' |
-           type == 'Woody litter' |
-           type == 'Soft rooted litter') %>% 
-  group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% # litter cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(litter_cover = sum(quad_cover)/10)
 
 # Shrub cover
 shrub_cover <- cover %>% 
   filter(type == 'Shrub') %>%
   group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover)) %>% # shrub cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(shrub_cover = sum(quad_cover)/10)
+  summarize(quad_cover = sum(cover)) %>%
+  group_by(site) %>% 
+  summarize(shrub_cover = sum(quad_cover)/20)
 
-# Grass cover
-grass_cover <- cover %>% 
-  filter(type == 'Grass') %>%
+# Forb/grass cover
+forb_grass_cover <- cover %>% 
+  filter(type == 'Dominant forb' | type == 'Forbs' | type == 'Grass') %>%
   group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover)) %>% # grass cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(grass_cover = sum(quad_cover)/10)
+  summarize(quad_cover = sum(cover)) %>% 
+  group_by(site) %>% 
+  summarize(forb_grass_cover = sum(quad_cover)/20)
 
-# Forb cover
-forb_cover <- cover %>% 
-  filter(type == 'Dominant forb' | type == 'Forbs') %>%
+# Understory cover
+understory_cover <- cover %>% 
+  filter(type == 'Dominant forb' | type == 'Forbs' |
+           type == 'Grass' | type == 'Shrub') %>%
   group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover)) %>% # forb cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(forb_cover = sum(quad_cover)/10)
+  summarize(quad_cover = sum(cover)) %>%
+  group_by(site) %>% 
+  summarize(understory_cover = sum(quad_cover)/20)
 
-# Loose litter cover
-loose_cover <- cover %>% 
-  filter(type == 'Soft loose litter' | type == 'Woody litter') %>% 
+# Leaf cover
+leaf_cover <- cover %>% 
+  filter(type == 'Soft loose litter') %>% 
   group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% # loose litter cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(loose_cover = sum(quad_cover)/10)
+  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% 
+  group_by(site) %>% 
+  summarize(leaf_cover = sum(quad_cover)/20)
 
-# Rooted litter cover
-rooted_cover <- cover %>% 
-  filter(type == 'Soft rooted litter') %>% 
+# Litter cover
+litter_cover <- cover %>% 
+  filter(type == 'Soft loose litter' | type == 'Woody litter' |
+           type == 'Soft rooted litter') %>% 
   group_by(site, transect, meter) %>% 
-  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% # loose litter cover at each quadrat
-  group_by(site, transect) %>% 
-  summarize(rooted_cover = sum(quad_cover)/10)
+  summarize(quad_cover = sum(cover, na.rm = TRUE)) %>% 
+  group_by(site) %>% 
+  summarize(litter_cover = sum(quad_cover)/20)
 
 ```
 
@@ -196,116 +130,55 @@ rooted_cover <- cover %>%
 
 # Coarse woody debris
 cwd_volume <- cwd %>%
-  mutate(ind_volume = ((pi/8)*(diameter_small_cm + diameter_large_cm)*length_m)/10000) %>% # volume of each piece of CWD in m^3
-  mutate(ind_vol_weighted = ind_volume/length_m) %>% # volume of CWD, weighted by the length (to use in calculation of volume/area)
-  group_by(site, transect) %>% 
+  mutate(ind_volume = ((pi/8)*(diameter_small_cm^2 + diameter_large_cm^2)*length_m)/10000) %>% # volume of each piece of CWD in m^3 (Smalian's formula)
+  mutate(ind_vol_weighted = ind_volume/length_m) %>% # volume of CWD, weighted by the length (DeVries' formula)
+  group_by(site) %>% 
   summarize(sum = (sum(ind_vol_weighted))) %>% # sum of ind_vol_weighted (m^3/m)
-  mutate(cwd_volume = (pi/50)*sum) %>% # volume density per transect (m^3/m^2)
+  mutate(cwd_volume = (pi/200)*sum*10000) %>% # volume density per transect (m^3/m^2) (DeVries' formula), converted to m^3/hectare
   mutate(cwd_volume = replace_na(cwd_volume, 0)) %>% # sites with NAs had no CWD
   select(-sum)
 
-```
 
-#### Diversity
+# Soft CWD
 
-- **Tree diversity:** Shannon diversity of all living adult trees (H)
-- **Shrub diversity:** Shannon diversity of all living shrubs (H)
-- **Forb diversity:** Shannon diversity of all living forbs (H)
-
-```{r diversity}
-
-# Tree diversity
-tree_spp <- tree %>%
-  filter(state != 'D', # filter out dead individuals
-         species != 'Pinaceae') %>%  # filter out unknown conifers (3 total)
-  mutate(species = case_when( # combine yellow pines into one 'species'
-    species == 'Pinus jeffreyi' | species == 'Pinus ponderosa' | species == 'Pinus sp.' ~ 'Pinus sp.',
-    TRUE ~ species
-  )) %>% 
-  group_by(site, transect, species) %>% 
-  summarize(n = length(id)) %>% 
-  spread(key = species, value = n) %>% 
-  ungroup() %>% 
-  replace(., is.na(.), 0)
-
-tree_matrix <- as.matrix(tree_spp[-c(1:2)])
-rownames(tree_matrix) <- tree_spp$site
-
-tree_H <- diversity(tree_matrix)
-
-tree_diversity <- tibble(site=tree_spp$site, transect=tree_spp$transect, tree_H)
-
-# Shrub diversity
-shrub_spp <- shrub %>% 
-  filter(shrub_or_tree == 'Shrub',
-         species != 'Unknown') %>% 
-  group_by(site, transect, species) %>% 
-  summarize(n = length(species)) %>% 
-  spread(key = species, value = n) %>% 
-  ungroup() %>% 
-  replace(., is.na(.), 0)
-
-shrub_matrix <- as.matrix(shrub_spp[-c(1:2)])
-rownames(shrub_matrix) <- shrub_spp$site
-
-shrub_H <- diversity(shrub_matrix)
-
-shrub_diversity <- tibble(site=shrub_spp$site, transect=shrub_spp$transect, shrub_H)
-
-# Forb diversity
-forb_spp <- cover %>% 
-  filter(type == 'Dominant forb',
-         species != 'UNKNOWN') %>% 
-  group_by(site, transect, meter) %>% 
-  filter(cover == max(cover), # only keep the highest cover forb in each quadrat
-         avg_height_cm == max(avg_height_cm), # only keep the tallest forb in each quadrat (by avg height)
-         max_height_cm == max(max_height_cm)) %>% # only keep the tallest forb in each quadrat (by max height)
-  group_by(site, transect, species) %>% 
-  summarize(n = length(species)) %>% 
-  spread(key = species, value = n) %>% 
-  ungroup() %>% 
-  replace(., is.na(.), 0)
-
-forb_matrix <- as.matrix(forb_spp[-c(1:2)])
-rownames(forb_matrix) <- forb_spp$site
-
-forb_H <- diversity(forb_matrix)
-
-forb_diversity <- tibble(site=forb_spp$site, transect=forb_spp$transect, forb_H)
+soft_cwd_volume <- cwd %>%
+  filter(decay>2) %>% 
+  mutate(ind_volume = ((pi/8)*(diameter_small_cm^2 + diameter_large_cm^2)*length_m)/10000) %>% # volume of each piece of CWD in m^3 (Smalian's formula)
+  mutate(ind_vol_weighted = ind_volume/length_m) %>% # volume of CWD, weighted by the length (DeVries' formula)
+  group_by(site) %>% 
+  summarize(sum = (sum(ind_vol_weighted))) %>% # sum of ind_vol_weighted (m^3/m)
+  mutate(soft_cwd_volume = (pi/200)*sum*10000) %>% # volume density per transect (m^3/m^2) (DeVries' formula), converted to m^3/hectare
+  mutate(soft_cwd_volume = replace_na(soft_cwd_volume, 0)) %>% # sites with NAs had no CWD
+  select(-sum)
 
 ```
 
 ```{r combined variables}
 
-veg_metrics <- full_join(site_meta[2:4], veg_cover) %>% 
-  full_join(shrub_cover) %>%
-  full_join(grass_cover) %>% 
-  full_join(forb_cover) %>% 
-  full_join(loose_cover) %>%
-  full_join(rooted_cover) %>%
+veg_metrics <- full_join(site_meta[2:4], shrub_cover) %>% 
+  full_join(forb_grass_cover) %>% 
+  full_join(litter_cover) %>% 
   full_join(live_tree_density) %>%
-  full_join(cwd_volume) %>% 
-  full_join(shrub_diversity) %>% 
-  full_join(forb_diversity) %>% 
-  full_join(tree_survival) %>% 
+  full_join(soft_cwd_volume) %>% 
+  full_join(tree_survival) %>%
   arrange(severity)
 veg_metrics[is.na(veg_metrics)] <- 0
-
-write_csv(veg_metrics,'output_data/veg_metrics.csv', col_names = TRUE)
 
 ```
 
 <br>
 
-### Fire severity vs. vegetation
+### By fire severity
+
+#### Differences between fire severity categories
 
 ```{r}
 
-veg <- pivot_longer(veg_metrics, cols=c(6:14), names_to = 'metric')
+veg <- pivot_longer(veg_metrics, cols=c(4:8), names_to = 'metric')
 
 # jitter plots with mean/se
 
-cols <- c('darkgreen', 'orange', 'red')
+cols <- c('#4AB793', '#DCA827', '#D85F2B')
 xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
 
 ggplot(veg, aes(x = severity, y = value)) +
@@ -319,86 +192,202 @@ ggplot(veg, aes(x = severity, y = value)) +
   scale_x_discrete(labels = xlabs) +
   facet_wrap(~metric, scales = 'free')
 
-library(nlme)
-dat <- filter(veg,metric=='shrub_cover')
-
-hist((dat$value)^(1/3))
-
-lm <- lme(data=dat, (value^(1/3))~severity, random=~1 | block/site,
-            method="REML")
-
-anova.lme(lm,
-          type="sequential",
-          adjustSigma = FALSE)
-
-plot(lm)
-qqnorm(resid(lm))
-qqline(resid(lm))
-
 # Kruskal-Wallis
 for (i in unique(veg$metric)) {
   dat <- filter(veg, metric==i)
   kw <- kruskal_test(dat, value~severity)
-  kw_bonf <- p.adjust(kw$p, method='bonferroni', n=9)
+  kw_bonf <- p.adjust(kw$p, method='bonferroni', n=5)
   kw_eff <- kruskal_effsize(dat, value~severity)
   print(paste('Metric:',i))
   print(paste('H =',kw$statistic,'; p =',kw_bonf,'; effect size =',kw_eff$effsize,'; magnitude:', kw_eff$magnitude))
 }
 
+
+veg %>% 
+  filter(metric=='live_tree_density') %>% 
+  dunn_test(value~severity, p.adjust.method='bonferroni')
+
+veg %>% 
+  filter(metric=='litter_cover') %>% 
+  dunn_test(value~severity, p.adjust.method='bonferroni')
+
+veg %>% 
+  filter(metric=='shrub_cover') %>% 
+  dunn_test(value~severity, p.adjust.method='bonferroni')
+
 ```
 
-Significant with a large effect size: shrub_cover, loose_cover, live_tree_density
+#### Correlations
 
 ```{r}
 
+# Correlations between metrics
+pairs(~ live_tree_density + litter_cover + shrub_cover +
+        forb_grass_cover + soft_cwd_volume,
+      data=veg_metrics)
+
+# Create a correlation matrix
+veg_cor <- veg_metrics[4:8] %>% 
+  cor(., method='spearman') # create correlation matrix
+
+# Visualize the correlation matrix
+
+corrplot(veg_cor,
+         type = 'upper',
+         order = 'hclust', # order variables by cluster
+         tl.col = 'black',
+         tl.cex = 0.8)
+
+# Rank correlations
+
+as.data.frame(veg_cor) %>% 
+  mutate(variable1 = rownames(veg_cor)) %>%
+  gather(variable2, cor_strength, 1:5) %>% 
+  # filter(cor_strength != 1,
+  #        cor_strength > 0.5 | cor_strength < -0.5) %>%
+  arrange(-cor_strength) %>% 
+  distinct(cor_strength, .keep_all = TRUE)
+
+```
+
+Significant with a large effect size: shrub_cover, leaf_cover, live_tree_density. Unsurprisingly, these three variables are highly correlated.
+
+#### PCA
+
+```{r}
+
+# PCA of fire variables
+
+veg_fire <- veg_metrics %>% 
+  select(site, severity, shrub_cover, live_tree_density, litter_cover)
+
+veg_pca <- prcomp(veg_fire[3:5],
+                  scale = TRUE) # scales the data
+
+summary(veg_pca) # PC1 describes 73.4% of the variance
+
 colors <- c('darkgreen', 'orange', 'red')
-sevs <- c('Unburned', 'Low-Mod\nSeverity', 'High\nSeverity')
+
+ggbiplot(veg_pca, groups = veg_fire$severity) +
+  scale_color_manual(name = 'Severity', values = colors) +
+  xlim(-3, 3) +
+  theme_classic()
+
+pca_scores <- data.frame(veg_pca$x) %>% 
+  bind_cols(veg_metrics[1:3]) %>% 
+  select(site, severity, PC1) %>% 
+  rename(pca_score = PC1)
+
+# Write CSV
+all_metrics <- full_join(veg_metrics, pca_scores)
+write_csv(all_metrics,'output_data/veg_metrics.csv', col_names = TRUE)
+
+# Kruskal Wallis, Dunn
+all_metrics %>% kruskal_test(pca_score~severity)
+all_metrics %>% kruskal_effsize(pca_score~severity)
+all_metrics %>% dunn_test(pca_score~severity, p.adjust.method='bonferroni')
+
+```
+
+#### Final plots
+
+```{r}
+
+cols <- c('#4AB793', '#DCA827', '#D85F2B')
+sevs <- c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')
 
 set.seed(3)
 shrub_plot <- filter(veg, metric=='shrub_cover') %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=value, color=severity), width=0.1, size=1.5) +
+  geom_jitter(aes(x=severity, y=value, color=severity, shape=severity), width=0.1, size=1.5) +
   geom_boxplot(aes(x=severity, y=value), fill=NA, outlier.shape=NA) +
-  scale_color_manual(values=colors) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
   theme_classic() +
   theme(legend.position = 'NA',
         axis.text.y = element_text(size = 9),
         axis.text.x = element_blank()) +
-  scale_y_continuous(limits=c(0,100), expand=c(0,0)) +
   labs(x='', y='Shrub cover\n(% cover)')
 
 set.seed(2)
-loose_plot <- filter(veg, metric=='loose_cover') %>% 
+leaf_plot <- filter(veg, metric=='litter_cover') %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=value, color=severity), width=0.1, size=1.5) +
+  geom_jitter(aes(x=severity, y=value, color=severity, shape=severity), width=0.1, size=1.5) +
   geom_boxplot(aes(x=severity, y=value), fill=NA, outlier.shape=NA) +
-  scale_color_manual(values=colors) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  scale_x_discrete(labels=sevs) +
+  scale_y_continuous(limits=c(0,100)) +
   theme_classic() +
   theme(legend.position = 'NA',
-        axis.text.y = element_text(size = 9),
-        axis.text.x = element_blank()) +
-  scale_y_continuous(limits=c(0,100), expand=c(0,0)) +
-  labs(x='', y='Loose litter cover\n(% cover)')
+        axis.text.y = element_text(size = 9)) +
+  labs(x='', y='Litter cover\n(% cover)')
 
 set.seed(15)
 tree_plot <- filter(veg, metric=='live_tree_density') %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=value, color=severity), width=0.1, size=1.5) +
+  geom_jitter(aes(x=severity, y=value, color=severity, shape=severity), width=0.1, size=1.5) +
   geom_boxplot(aes(x=severity, y=value), fill=NA, outlier.shape=NA) +
-  scale_color_manual(values=colors) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  scale_y_continuous(limits=c(0,600)) +
+  labs(x='', y='Live tree density\n(trees/hectare)')
+
+cwd_plot <- filter(veg, metric=='soft_cwd_volume') %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=value, color=severity, shape=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=value), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.text.x = element_blank()) +
+  labs(x='', y=expression(paste('Soft CWD (',m^2,'/ha)')))
+
+ferb_plot <- filter(veg, metric=='forb_grass_cover') %>% 
+  ggplot() +
+  geom_jitter(aes(x=severity, y=value, color=severity, shape=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=value), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  scale_x_discrete(labels=sevs) +
+  theme_classic() +
+  theme(legend.position = 'NA',
+        axis.text.y = element_text(size = 9),
+        axis.title.y = element_text()) +
+  scale_y_continuous(limits=c(0,30)) +
+  labs(x='', y='Forb + grass cover\n(% cover)')
+
+pca_plot <- ggplot(all_metrics) +
+  geom_jitter(aes(x=severity, y=pca_score, color=severity, shape=severity),
+              width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=pca_score), fill=NA, outlier.shape=NA) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  scale_x_discrete(labels=sevs) +
   theme_classic() +
   theme(legend.position = 'NA',
         axis.text.y = element_text(size = 9)) +
-  scale_y_continuous(limits=c(-1,600), expand=c(0,0), breaks=c(0,200,400,600)) +
-  scale_x_discrete(labels=sevs) +
-  labs(x='', y='Live tree density\n(trees/hectare)')
+  labs(x='', y='Tree + Shrub + Litter\nPC1 (73.4% variance)')
 
-plot_grid(shrub_plot, loose_plot, tree_plot,
-          ncol = 1, align = 'v',
-          rel_heights = c(1, 1, 1.1))
+plot_grid(tree_plot, shrub_plot, leaf_plot, pca_plot,
+          ncol = 2, align = 'v',
+          rel_heights = c(1,1.1))
 
 ggsave('figs/vegfig.png', plot = last_plot(),
-       width = 2.7, height = 6, units = 'in')
+       width = 5.5, height = 4, units = 'in')
+
+plot_grid(cwd_plot, ferb_plot,
+          ncol = 1, align = 'v',
+          rel_heights = c(1,1.1))
+
+ggsave('figs/vegfig2.png', plot = last_plot(),
+       width = 3, height = 4, units = 'in')
 
 ```
 

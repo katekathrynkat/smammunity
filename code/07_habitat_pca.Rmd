@@ -99,7 +99,7 @@ as.data.frame(habitat_cor) %>%
   - tree_survival
   - avg_severity
   - dist_to_edge
-  - litter cover
+  - litter_cover
 - veg cover & shrub biomass
 - forb & shrub biomass
 - tree diversity & biomass

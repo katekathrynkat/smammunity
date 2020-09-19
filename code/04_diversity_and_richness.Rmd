@@ -269,7 +269,7 @@ ggplot(df, aes(x = x, y = y, color = site)) +
   geom_ribbon(aes(ymin = y.lwr, ymax = y.upr, fill = site, color = NULL),
               alpha=0.2) +
   scale_linetype(name = 'Method', labels = c('Interpolation', 'Extrapolation')) +
-  scale_color_manual(name = 'Severity', values = c('darkgreen', 'orange', 'red'),
+  scale_color_manual(name = 'Severity', values = c('#4AB793', '#DCA827', '#D85F2B'),
                      labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +
   scale_fill_manual(name = 'Severity', values = c('darkgreen', 'orange', 'red'),
                     labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +

@@ -17,7 +17,6 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 ```{r packages and data}
 
 # Load packages
-
 library(tidyverse)
 library(rstatix)
 library(ggpubr)
@@ -26,6 +25,13 @@ library(effectsize)
 library(kableExtra)
 library(calecopal)
 library(fishmethods) # for Schnabel's estimate
+library(lme4) # for GLMMs
+library(multcomp) # for GLMM Tukey
+library(piecewiseSEM) # for GLMM r-squared
+library(jtools) # for GLM plotting
+
+# Update functions
+select <- dplyr::select
 
 # Load data
 
@@ -60,13 +66,14 @@ abundance <- smamms %>%
   full_join(effort) %>% 
   mutate(n_adj = n/effort*300) %>% # add column adjusted for effort
   ungroup() %>% 
-  full_join(site_meta[2:4])
+  full_join(site_meta[2:4]) %>% 
+  mutate(offset=effort/300)
 
 ```
 
-## Summaries of abundance
+## Summaries
 
-### Raw abundance by species
+### Raw abundance
 
 ```{r}
 
@@ -89,146 +96,6 @@ kable(summary[,2:4], col.names = c('Binomial', 'Family', 'Individuals')) %>%
 
 - Although traps were primarily open at night, we can still include diurnal species (chipmunks, squirrels) in measures of relative abundance because traps were opened and closed at approximately the same time each day.
 - Flying squirrels spend a significant amount of time foraging on the ground, so their capture was not a fluke.
-
-<br>
-
-### Abundance by severity
-
-```{r}
-
-# Jitterplot with mean/SE
-ggplot(abundance, aes(x = severity, y = n_adj)) +
-  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
-  scale_color_manual(values = cols) +
-  scale_shape_manual(values=c(1,2,0)) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
-  stat_summary(fun = 'mean', size = 2, geom = 'point') +
-  theme_classic() +
-  labs(x = 'Fire Severity',
-       y = 'Total small mammal abundance') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs)
-
-```
-
-```{r, eval=FALSE}
-
-# Check summary stats and model assumptions for total abundance per site
-
-# Summary table
-abundance %>% 
-  group_by(severity) %>% 
-  get_summary_stats(n_adj)
-
-# Check for outliers
-abundance %>% group_by(severity) %>% 
-  identify_outliers(n_adj)
-# 2 outliers (HICORN and MIXMOR), no extreme outliers
-
-# Check for normality
-lm <- lm(n_adj~severity, data=abundance)
-ggqqplot(residuals(lm))
-ggqqplot(abundance, "n_adj", facet.by="severity")
-shapiro_test(residuals(lm))
-abundance %>% group_by(severity) %>% 
-  shapiro_test(n_adj)
-# The two outliers make the data not normal
-
-# Homogoneity of variance
-plot(lm,1)
-abundance %>% levene_test(n_adj~severity)
-# Variance is fine
-
-#Kruskal-Wallis
-kruskal_test(n_adj~severity, data=abundance)
-# p=0.0658
-kruskal_effsize(n_adj~severity, data=abundance)
-# effsize=0.143, n=27 (large)
-
-
-
-library(lme4)
-glmm <- glmer(data=abundance, n_adj~severity + (1|block),
-               family=Gamma) # for positive continuous response
-plot(glmm)
-ggqqplot(residuals(glmm))
-shapiro_test(residuals(glmm))
-summary(glmm)
-
-library(jtools)
-effect_plot(glmm, pred=severity,
-            plot.points=TRUE)
-
-```
-
-Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
-
-Two of these sites look like outliers:
-
-- HICORN had a ridiculous number of PEMA
-- MIXMOR had a lot of PEMA, OTBE, and SOTR
-
-<br>
-
-### Biomass by severity
-
-```{r}
-
-biomass <- full_join(smamms[,1:8], mass) %>% 
-  group_by(site, severity) %>% 
-  summarize(biomass = sum(spp_avg)) %>% # biomass per site
-  full_join(effort) %>% 
-  mutate(bm_adj = biomass/effort*300) %>% # add column adjusted for effort
-  ungroup()
-
-# Jitterplot with mean/SE
-ggplot(biomass, aes(x = severity, y = bm_adj)) +
-  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
-  scale_color_manual(values = cols) +
-  scale_shape_manual(values=c(1,2,0)) +
-  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
-  stat_summary(fun = 'mean', size = 2, geom = 'point') +
-  theme_classic() +
-  labs(x = 'Fire Severity',
-       y = 'Total small mammal biomass') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs)
-
-```
-
-```{r, eval=FALSE}
-
-# Check summary stats and model assumptions for total abundance per site
-
-# Summary table
-biomass %>% 
-  group_by(severity) %>% 
-  get_summary_stats(bm_adj)
-
-# Check for outliers
-biomass %>% group_by(severity) %>% 
-  identify_outliers(bm_adj)
-# 3 outliers (MIXMOR, HIBADR, HICAMP)
-
-# Check for normality
-lm <- lm(bm_adj~severity, data=biomass)
-ggqqplot(residuals(lm))
-ggqqplot(biomass, "bm_adj", facet.by="severity")
-shapiro_test(residuals(lm))
-# The outliers make the data not normal
-
-# Homogoneity of variance
-plot(lm,1)
-biomass %>% levene_test(bm_adj~severity)
-# Variance is fine
-
-#Kruskal-Wallis
-kruskal_test(bm_adj~severity, data=biomass)
-# p=0.484
-kruskal_effsize(bm_adj~severity, data=biomass)
-# effsize=0.0228, n=27 (small)
-
-```
 
 <br>
 
@@ -285,7 +152,7 @@ prop_species <- smamms %>%
   group_by(species, common_name, severity) %>% 
   summarize(n = sum(cpue)) %>% 
   mutate(prop = n/sum(n)*100) %>% # proportion of captures at each treatment, per species
-  mutate(label = paste0(common_name,' (',species,')')) %>% 
+  mutate(label = common_name) %>% 
   ungroup()
 
 prop_low <- prop_species %>%  # data frame for just low severity
@@ -343,15 +210,13 @@ ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
         axis.title.x = element_text(hjust = 3.8, size = 13))
 
 ggsave('figs/fig5a.png', plot = last_plot(),
-       width = 4.5, height = 3, units = 'in')
+       width = 4, height = 3, units = 'in')
 
 ```
 
 - Habitat preferences for the 11 species of mammals, standardized by trapping effort.
 
-<br>
-
-## Abundance by species
+### Abundance by species
 
 ```{r abundance per species, include=TRUE, fig.width=3, fig.height=2}
 
@@ -391,151 +256,6 @@ for (i in unique(smamms$species)) {
 ```
 
 Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort for each species individually (i.e. non-target species were counted as half of a trap night, similar to treatment of sprung traps)
-
-<br>
-
-### Deer mouse (PEMA)
-  
-```{r}
-
-# PEMA abundance
-pema <- smamms %>% 
-  filter(species == 'PEMA') %>% 
-  group_by(site, severity) %>% 
-  tally() %>%
-  full_join(abundance, by = c('site', 'severity')) %>% 
-  mutate(non_target = (n.y-n.x),
-         effort_pema = effort - non_target/2,
-         n_pema = n.x,
-         n_adj_pema = case_when(
-           !is.na(n_pema) ~ (n_pema/effort_pema)*300,
-           TRUE ~ 0
-           )) %>% 
-  select(site, severity, n_adj_pema) %>% 
-  ungroup()
-
-# Check summary stats and model assumptions for total PEMA abundance per site
-
-# Summary table
-pema %>% 
-  group_by(severity) %>% 
-  get_summary_stats(n_adj_pema)
-
-# Check for outliers
-pema %>% group_by(severity) %>% 
-  identify_outliers(n_adj_pema)
-# 1 outlier in HICORN, no extreme outliers
-
-# Check for normality
-lm <- lm(n_adj_pema~severity, data=pema)
-ggqqplot(residuals(lm))
-ggqqplot(pema, "n_adj_pema", facet.by="severity")
-shapiro_test(residuals(lm))
-pema %>% 
-  group_by(severity) %>% 
-  shapiro_test(n_adj_pema)
-# The outlier makes the data not normal
-
-# Homogoneity of variance
-plot(lm,1)
-pema %>% ungroup() %>%
-  levene_test(n_adj_pema~severity)
-# Variance is fine
-
-# Kruskal-Wallis test
-kruskal_test(n_adj_pema~severity, data=pema)
-# p=0.00982
-kruskal_effsize(n_adj_pema~severity, data=pema)
-# effsize=0.302, p=27 (large)
-dunn_test(pema, n_adj_pema~severity)
-# unb/mod p=0.859, unb/high p=0.0197, mod/high p=0.0222
-
-# Jitterplot with mean/SE
-ggplot(pema, aes(x = severity, y = n_adj_pema)) +
-  geom_jitter(aes(color = severity)) +
-  scale_color_manual(values = cols) +
-  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
-  theme_classic() +
-  labs(x = 'Fire Severity',
-       y = 'PEMA Abundance') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs)
-
-```
-
-Jitter plot points represent PEMA abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Site HICORN was removed. Abundance was standardized by trapping effort.
-
-- ANOVA F=5.619, p=0.0103
-- Tukey unb vs. high p=0.0158, mod vs. high p=0.0253
-
-<br>
-
-### Trowbridge's shrew (SOTR)
-
-```{r}
-
-# SOTR abundance
-sotr <- smamms %>% 
-  filter(species == 'SOTR') %>% 
-  group_by(site, severity) %>% 
-  tally() %>%
-  full_join(abundance, by = c('site', 'severity')) %>% 
-  mutate(non_target = (n.y-n.x),
-         effort_sotr = effort - non_target/2,
-         n_sotr = n.x,
-         n_adj_sotr = case_when(
-           !is.na(n_sotr) ~ (n_sotr/effort_sotr)*300,
-           TRUE ~ 0
-           )) %>% 
-  select(site, severity, n_adj_sotr)
-
-# Check summary stats and model assumptions for total PEMA abundance per site
-
-# Summary table
-sotr %>% 
-  group_by(severity) %>% 
-  get_summary_stats(n_adj_sotr)
-
-# Check for outliers
-sotr %>% group_by(severity) %>% 
-  identify_outliers(n_adj_sotr)
-# 2 outliers: MIXDP2 and MIXMOR, both extreme
-
-# Check for normality
-lm <- lm(n_adj_sotr~severity, data=sotr)
-ggqqplot(residuals(lm))
-ggqqplot(sotr, "n_adj_sotr", facet.by="severity")
-shapiro_test(residuals(lm))
-# The outlier makes the data not normal
-
-# Homogoneity of variance
-plot(lm,1)
-sotr %>% ungroup() %>%
-  levene_test(n_adj_sotr~severity)
-# Variance is all weird because high sites had no shrews
-
-# Kruskal-Wallis test
-kw <- kruskal.test(n_adj_sotr~severity, data=sotr)
-# p=0.00009407
-kw$statistic/27 # eta squared = chi square / n
-# effsize=0.686, p=27 (large)
-dunn.test(sotr$n_adj_sotr, sotr$severity)
-# unb/mod p=0.0006, unb/high p=0.0000, mod/high p=0.1929
-
-# Jitterplot with mean/SE
-ggplot(sotr, aes(x = severity, y = n_adj_sotr)) +
-  geom_jitter(aes(color = severity)) +
-  scale_color_manual(values = cols) +
-  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
-  theme_classic() +
-  labs(x = 'Fire Severity',
-       y = 'SOTR Abundance') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs)
-
-```
-
-<br>
 
 ## Population size by Schnabel's estimate
 
@@ -622,6 +342,537 @@ ggplot(cap_rate, aes(x = severity, y = cap_rate)) +
 - Capture rate calculated as the number of unique individuals captured divided by the Schnabel estimate of population size.
 - All but three sites had a capture rate >75%.
 
+```{r}
+
+# Ratio of recaps: caps
+# Comparison between sites
+
+ratio <- captures %>% 
+  filter(species!='SPRU' & species!='MISS') %>% 
+  group_by(site) %>% 
+  tally() %>% 
+  full_join(abundance[1:3], by=c('site')) %>% 
+  mutate(rate=n.y/n.x)
+
+ggplot(ratio, aes(x = severity, y = rate)) +
+  geom_jitter(aes(color = severity)) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Recap Rate') +
+  theme(legend.position = 'NA')
+
+kruskal_test(rate~severity, data=ratio)
+
+```
+
+
+<br>
+
+## Total abundance
+
+```{r}
+
+# Jitterplot + boxplot
+ggplot(abundance, aes(x = severity, y = n_adj)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
+  scale_color_manual(values = cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r, eval=FALSE}
+
+# Check summary stats and model assumptions for total abundance per site
+
+# Summary table
+abundance %>% 
+  group_by(severity) %>% 
+  get_summary_stats(n_adj)
+
+# Check for outliers
+abundance %>% group_by(severity) %>% 
+  identify_outliers(n_adj)
+# 2 outliers (HICORN and MIXMOR), no extreme outliers
+
+# Check for normality
+lm <- lm(n_adj~severity, data=abundance)
+ggqqplot(residuals(lm))
+ggqqplot(abundance, "n_adj", facet.by="severity")
+shapiro_test(residuals(lm))
+abundance %>% group_by(severity) %>% 
+  shapiro_test(n_adj)
+# The two outliers make the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+abundance %>% levene_test(n_adj~severity)
+# Variance is fine
+
+#Kruskal-Wallis
+kruskal_test(n_adj~severity, data=abundance)
+# p=0.0658
+kruskal_effsize(n_adj~severity, data=abundance)
+# effsize=0.143, n=27 (large)
+
+```
+
+Jitter plot points represent total small mammal abundance at each site; error bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
+
+Two of these sites look like outliers:
+
+- HICORN had a ridiculous number of PEMA
+- MIXMOR had a lot of PEMA, OTBE, and SOTR
+
+### GLMM
+
+response ~ severity + random(block) + offset(effort)
+
+Abundance response variables (total, PEMA, and SOTR abundance): Poisson
+Other response variables (biomass): Gamma
+
+Richness, evenness: Gaussian???
+
+R2: https://jonlefcheck.net/2013/03/13/r2-for-linear-mixed-effects-models/
+Offsets: http://environmentalcomputing.net/interpreting-coefficients-in-glms/
+Communicating results: http://environmentalcomputing.net/mixed-models-3/
+Using GLMs instead of LMs: https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12552#support-information-section
+Choosing a family: https://datavoreconsulting.com/post/count-data-glms-choosing-poisson-negative-binomial-zero-inflated-poisson/
+
+```{r}
+
+# Plot mean vs. variance
+abundance %>% 
+  group_by(severity) %>% 
+  summarize(mean(n),
+            var(n))
+# Overdispersed data --> use negative binomial distribution
+
+# GLMMs
+glmm <- glmer.nb(data=abundance, n ~ severity + (1|block) + offset(offset))
+
+# Null model for comparison
+glmm_null <- glmer.nb(data=abundance, n ~ 1 + (1|block) + offset(offset))
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+
+
+
+# Create GLM
+glm <- glm.nb(data=abundance, n ~ severity + offset(offset))
+glm_null <- glm.nb(data=abundance, n ~ 1 + offset(offset))
+
+glm <- glm(data=abundance, n ~ severity + offset(offset), family=quasipoisson)
+
+# Predict model mean and SE
+dat <- tibble(severity=c('unb','mod','high'))
+pred <- predict(glm, newdata=dat, type='link', se=TRUE)
+exp <- exp(pred$fit)
+se_up <- exp(pred$fit + 1.96 * pred$se.fit)
+se_low <- exp(pred$fit - 1.96 * pred$se.fit)
+modfit <- tibble(dat,exp,se_up,se_low)
+
+
+
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Check for under/overdispersion
+E2 <- resid(glm, type = "pearson")
+N  <- nrow(abundance)
+p  <- length(coef(glm))   
+sum(E2^2) / (N - p)
+
+# Plot
+ggplot() +
+  geom_jitter(data=abundance, aes(x=severity, y=n, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=modfit, aes(x=severity, y=exp),
+             size=2) +
+  geom_errorbar(data=modfit, aes(x=severity, ymin=se_low, ymax=se_up),
+                width=0.2, size=0.6) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+```
+
+<br>
+
+## Deer mouse (PEMA) abundance
+  
+```{r}
+
+# PEMA abundance
+pema <- smamms %>% 
+  filter(species == 'PEMA') %>% 
+  group_by(site, severity) %>% 
+  tally() %>%
+  full_join(abundance, by = c('site', 'severity')) %>% 
+  mutate(non_target = (n.y-n.x),
+         effort_pema = effort - non_target/2,
+         n_pema = n.x,
+         n_adj_pema = case_when(
+           !is.na(n_pema) ~ (n_pema/effort_pema)*300,
+           TRUE ~ 0
+           ),
+         offset=effort_pema/300) %>% 
+  select(site, severity, block, n_pema, offset, n_adj_pema) %>%
+  ungroup()
+
+# Check summary stats and model assumptions for total PEMA abundance per site
+
+# Summary table
+pema %>% 
+  group_by(severity) %>% 
+  get_summary_stats(n_adj_pema)
+
+# Check for outliers
+pema %>% group_by(severity) %>% 
+  identify_outliers(n_adj_pema)
+# 1 outlier in HICORN, no extreme outliers
+
+# Check for normality
+lm <- lm(n_adj_pema~severity, data=pema)
+ggqqplot(residuals(lm))
+ggqqplot(pema, "n_adj_pema", facet.by="severity")
+shapiro_test(residuals(lm))
+pema %>% 
+  group_by(severity) %>% 
+  shapiro_test(n_adj_pema)
+# The outlier makes the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+pema %>% ungroup() %>%
+  levene_test(n_adj_pema~severity)
+# Variance is fine
+
+# Kruskal-Wallis test
+kruskal_test(n_adj_pema~severity, data=pema)
+kruskal.test(n_adj_pema~severity, data=pema)
+# p=0.00982
+kruskal_effsize(n_adj_pema~severity, data=pema)
+# effsize=0.302, p=27 (large)
+dunn_test(pema, n_adj_pema~severity)
+# unb/mod p=0.859, unb/high p=0.0197, mod/high p=0.0222
+
+# Jitterplot with mean/SE
+ggplot(pema, aes(x = severity, y = n_adj_pema)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'PEMA Abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+Jitter plot points represent PEMA abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Site HICORN was removed. Abundance was standardized by trapping effort.
+
+- ANOVA F=5.619, p=0.0103
+- Tukey unb vs. high p=0.0158, mod vs. high p=0.0253
+
+<br>
+
+### GLMM
+
+```{r}
+
+# GLMM
+glmm <- glmer(data=pema, n_pema ~ severity + (1|block) + offset(offset),
+              family=poisson)
+
+# Null model for comparison
+glmm_null <- glmer(data=pema, n_pema ~ 1 + (1|block) + offset(offset),
+                  family=poisson)
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+# Create GLM without random effect (to test for fit of Poisson, and for plotting)
+glm <- glm(data=pema, n_pema ~ severity + offset(offset),
+           family=poisson)
+glm_null <- glm(data=pema, n_pema ~ 1 + offset(offset))
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Plot raw data and model predictions
+pred <- make_predictions(glm, pred='severity', data=pema)
+
+effect_plot(glm, pred=severity, data=pema,
+            plot.points=TRUE, jitter=.2)
+
+ggplot() +
+  geom_jitter(data=pema, aes(x=severity, y=n_pema, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=pred, aes(x=severity, y=n_pema),
+             size=3) +
+  geom_errorbar(data=pred, aes(x=severity, ymin=ymin, ymax=ymax),
+                width=0.2, size=1) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Deer mouse abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+<br>
+
+## Trowbridge's shrew (SOTR) abundance
+
+```{r}
+
+# SOTR abundance
+sotr <- smamms %>% 
+  filter(species == 'SOTR') %>% 
+  group_by(site, severity) %>% 
+  tally() %>%
+  full_join(abundance, by = c('site', 'severity')) %>% 
+  mutate(non_target = (n.y-n.x),
+         effort_sotr = effort - non_target/2,
+         n_sotr = n.x,
+         n_adj_sotr = case_when(
+           !is.na(n_sotr) ~ (n_sotr/effort_sotr)*300,
+           TRUE ~ 0
+           ),
+           offset=effort_sotr/300) %>% 
+  select(site, severity, block, n_sotr, offset, n_adj_sotr) %>%
+  ungroup()
+
+# Check summary stats and model assumptions for total PEMA abundance per site
+
+# Summary table
+sotr %>% 
+  group_by(severity) %>% 
+  get_summary_stats(n_adj_sotr)
+
+# Check for outliers
+sotr %>% group_by(severity) %>% 
+  identify_outliers(n_adj_sotr)
+# 2 outliers: MIXDP2 and MIXMOR, both extreme
+
+# Check for normality
+lm <- lm(n_adj_sotr~severity, data=sotr)
+ggqqplot(residuals(lm))
+ggqqplot(sotr, "n_adj_sotr", facet.by="severity")
+shapiro_test(residuals(lm))
+# The outlier makes the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+sotr %>% ungroup() %>%
+  levene_test(n_adj_sotr~severity)
+# Variance is all weird because high sites had no shrews
+
+# Kruskal-Wallis test
+kw <- kruskal.test(n_adj_sotr~severity, data=sotr)
+# p=0.00009407
+kw$statistic/27 # eta squared = chi square / n
+# effsize=0.686, p=27 (large)
+dunn.test(sotr$n_adj_sotr, sotr$severity)
+# unb/mod p=0.0006, unb/high p=0.0000, mod/high p=0.1929
+
+# Jitterplot with mean/SE
+ggplot(sotr, aes(x = severity, y = n_adj_sotr)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'SOTR Abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+<br>
+
+### GLMM
+
+```{r}
+
+# GLMM
+glmm <- glmer(data=sotr, n_sotr ~ severity + (1|block) + offset(offset),
+              family=poisson)
+
+# Null model for comparison
+glmm_null <- glmer(data=sotr, n_sotr ~ 1 + (1|block) + offset(offset),
+                  family=poisson)
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+# Create GLM without random effect (to test for fit of Poisson, and for plotting)
+glm <- glm(data=sotr, n_sotr ~ severity + offset(offset),
+           family=poisson)
+glm_null <- glm(data=sotr, n_sotr ~ 1 + offset(offset))
+
+glm <- glm(data=sotr, n_sotr ~ severity + offset(offset),
+           family=quasipoisson)
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Plot raw data and model predictions
+pred <- make_predictions(glm, pred='severity', data=sotr)
+
+effect_plot(glm, pred=severity, data=sotr,
+            plot.points=TRUE, jitter=.2)
+
+
+ggplot() +
+  geom_jitter(data=pema, aes(x=severity, y=n_pema, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=pred, aes(x=severity, y=n_pema),
+             size=3) +
+  geom_errorbar(data=pred, aes(x=severity, ymin=ymin, ymax=ymax),
+                width=0.2, size=1) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Deer mouse abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+```
+
+<br>
+
+## Biomass
+
+```{r}
+
+biomass <- full_join(smamms[,1:8], mass) %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass = sum(spp_avg)) %>% # biomass per site
+  full_join(effort) %>% 
+  mutate(bm_adj = biomass/effort*300) %>% # add column adjusted for effort
+  ungroup()
+
+# Jitterplot with mean/SE
+ggplot(biomass, aes(x = severity, y = bm_adj)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
+  scale_color_manual(values = cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
+  stat_summary(fun = 'mean', size = 2, geom = 'point') +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal biomass') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r, eval=FALSE}
+
+# Check summary stats and model assumptions for total abundance per site
+
+# Summary table
+biomass %>% 
+  group_by(severity) %>% 
+  get_summary_stats(bm_adj)
+
+# Check for outliers
+biomass %>% group_by(severity) %>% 
+  identify_outliers(bm_adj)
+# 3 outliers (MIXMOR, HIBADR, HICAMP)
+
+# Check for normality
+lm <- lm(bm_adj~severity, data=biomass)
+ggqqplot(residuals(lm))
+ggqqplot(biomass, "bm_adj", facet.by="severity")
+shapiro_test(residuals(lm))
+# The outliers make the data not normal
+
+# Homogoneity of variance
+plot(lm,1)
+biomass %>% levene_test(bm_adj~severity)
+# Variance is fine
+
+#Kruskal-Wallis
+kruskal_test(bm_adj~severity, data=biomass)
+# p=0.484
+kruskal_effsize(bm_adj~severity, data=biomass)
+# effsize=0.0228, n=27 (small)
+
+```
 
 ```{r eval=FALSE}
 

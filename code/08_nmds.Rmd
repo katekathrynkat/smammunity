@@ -43,6 +43,8 @@ site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>%
 veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
+smamm_meta <- read_csv('raw_data/lit_data/mammal_traits.csv')
+
 ```
 
 ```{r data wrangling}
@@ -79,7 +81,7 @@ ord <- metaMDS(matrix_adj,
                autotransform = FALSE,
                k = 2,
                try=50)
-ord$stress
+ord$stress # 0.09
 stressplot(ord)
 
 # Scree plot to check stress per number of dimensions
@@ -138,11 +140,17 @@ smamm_ado
 # Pairwise Adonis
 smamm_ado_pw <- pairwise.adonis(matrix_hell, severity,
                                 sim.method = 'bray',
-                                p.adjust.m = 'bonferroni')
+                                p.adjust.m = 'holm')
 
 smamm_ado_pw
 
 ```
+
+
+        pairs Df  SumsOfSqs    F.Model         R2 p.value p.adjusted sig
+    1  unb vs mod  1 0.31713367  4.9151490 0.23500425   0.002      0.006   *
+    2 unb vs high  1 0.45329584 10.2675595 0.39088365   0.001      0.003   *
+    3 mod vs high  1 0.05364198  0.9347399 0.05519659   0.466      1.000    
 
 - NMDS in two dimensions using relative abundance species matrix and Wisconsin correction on Bray-Curtis distances
 - Appears to be fewer sites because some of them exactly overlap
@@ -166,16 +174,16 @@ smamm_ado_pw
 
 ### Habitat drivers
 
-**NMDS plot with variables that changed with fire:**
-
 ```{r model nmds}
 
 # Data frame with only the variables from the model
 model_vars <- veg_metrics %>% 
-  select(site, severity, shrub_cover, loose_cover, live_tree_density)
+  select(site, severity,
+         litter_cover, live_tree_density, soft_cwd_volume,
+         shrub_cover, forb_grass_cover, pca_score)
 
 # Fit environmental variables
-fit <- envfit(ord, model_vars[,3:5], permutations = 1000)
+fit <- envfit(ord, model_vars[,3:8], permutations = 1000)
 
 # NMDS plot with arrows for environmental variables
 par(mar = c(4,4,1,1))
@@ -195,11 +203,13 @@ text(ord, display = 'species',
 
 **Clean NMDS plots with ggplot:**
 
+#### Data
+
 ```{r, include=FALSE}
 
 # Ordination plot with ggplot
 
-# Data frames with point and vector information
+# Data frames with point and vector informations
 
 site_points <- fortify(ord) %>% 
   filter(Score == 'sites') %>% 
@@ -211,22 +221,31 @@ spp_points <- fortify(ord) %>%
   filter(Score == 'species')
 
 vectors <- fortify(fit) %>% 
-  mutate(xend=NMDS1*1.35,
-         yend=NMDS2*1.35,
+  mutate(xend=NMDS1*1.5,
+         yend=NMDS2*1.5,
          xlab = case_when(
-           Label == 'shrub_cover' ~ xend,
-           Label == 'loose_cover' ~ xend,
-           Label == 'live_tree_density' ~ xend-0.26
+           Label == 'shrub_cover' ~ xend+0.33,
+           Label == 'litter_cover' ~ xend+0.2,
+           Label == 'live_tree_density' ~ xend-0.34,
+           Label == 'soft_cwd_volume' ~ xend-0.2,
+           Label == 'forb_grass_cover' ~ xend+0.49,
+           Label == 'pca_score' ~ xend+0.3
          ),
          ylab = case_when(
-           Label == 'shrub_cover' ~ yend+0.05,
-           Label == 'loose_cover' ~ yend-0.04,
-           Label == 'live_tree_density' ~ yend
+           Label == 'shrub_cover' ~ yend+0.04,
+           Label == 'litter_cover' ~ yend-0.06,
+           Label == 'live_tree_density' ~ yend,
+           Label == 'soft_cwd_volume' ~ yend+0.08,
+           Label == 'forb_grass_cover' ~ yend-0.03,
+           Label == 'pca_score' ~ yend
          ),
          lab = case_when(
            Label == 'shrub_cover' ~ 'Shrub cover',
-           Label == 'loose_cover' ~ 'Litter cover',
-           Label == 'live_tree_density' ~ 'Tree density'
+           Label == 'litter_cover' ~ 'Litter cover',
+           Label == 'live_tree_density' ~ 'Tree density',
+           Label == 'soft_cwd_volume' ~ 'Soft CWD',
+           Label == 'forb_grass_cover' ~ 'Forb+grass cover',
+           Label == 'pca_score' ~ 'PC1[T+S+L]'
          ))
 
 # Data frame with ellipse information
@@ -251,29 +270,29 @@ for(g in levels(site_points$group)){
 
 ```
 
-```{r}
+#### Plot
 
+```{r}
+  
+# Plot
 ggplot() +
   geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2, color=group),
             size=0.6) +
   geom_point(data=site_points, aes(x=NMDS1, y=NMDS2, color=group, shape=group),
-             size=1.8) +
-  geom_segment(data=vectors, aes(x=0, y=0, xend=xend, yend=yend),
-               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.5) +
-  # geom_text(data=vectors, aes(x=xlab, y=ylab, label=lab),
-  #           size=4) +
-  # geom_text_repel(data=spp_points, aes(x=NMDS1, y=0, label=Label),
-  #                 direction='x', segment.alpha=0, vjust=0,
-  #                 size=3, color='grey40', angle=90) +
-  # geom_text_repel(data=spp_points, aes(x=0, y=NMDS2, label=Label),
-  #                 direction='y', segment.alpha=0, hjust=0,
-  #                 size=3, color='grey40') +
-  geom_label(data=site_points, aes(x=0.6, y=-0.8,
-                                   label='NMDS in 3 dim\n2 dim displayed\nstress = 0.10'),
+  size=1.8) +
+  geom_segment(data=vectors[1:5,], aes(x=0, y=0, xend=xend, yend=yend),
+               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.6) +
+  geom_segment(data=vectors[6,], aes(x=0, y=0, xend=xend, yend=yend),
+               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.6, linetype=5) +
+  geom_text(data=vectors[1:5,], aes(x=xlab, y=ylab, label=lab), size=4) +
+  geom_text(data=vectors[6,], aes(x=xlab, y=ylab, label=lab), size=4, parse=TRUE) +
+  geom_label(data=site_points, aes(x=0.82, y=-0.7,
+                                   label='NMDS in 3 dim\n2 dim displayed\nstress = 0.09'),
              size=4) +
-  scale_color_manual(values=c('darkgreen','orange','red')) +
-  # scale_x_continuous(limits=c(-1.15,0.85)) +
-  # scale_y_continuous(limits=c(-0.95,0.5)) +
+  scale_color_manual(values=c('#4AB793', '#DCA827', '#D85F2B')) +
+  scale_shape_manual(values=c(19,17,15)) +
+  scale_x_continuous(limits=c(-1.6,1.15)) +
+  scale_y_continuous(limits=c(-0.9,0.71)) +
   theme_classic() +
   theme(panel.border=element_rect(fill=NA),
         axis.text.x=element_blank(), axis.text.y=element_blank(),
@@ -283,6 +302,144 @@ ggplot() +
 ggsave('figs/fig5b.png', plot=last_plot(),
        width=4.5, height=3.5, units='in')
 
+```
+
+### Traits
+
+#### Data
+
+```{r model nmds}
+
+# Data frame with mammal traits
+traits <- read_csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
+  arrange(species)
+
+# Fit traits
+trait_fit <- envfit(ord, traits[,c(4:6)], permutations = 1000, display = 'sp')
+
+# NMDS plot with arrows for traits
+par(mar = c(4,4,1,1))
+plot(ord, diplay = 'sites', type = 'n')
+points(ord, display = 'sites',
+       cex = 1, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity, # ellipse with std error around centroids
+            label = FALSE, col = cols, lwd = 2)
+plot(trait_fit,
+     col = 'black', lwd = 3, cex = 0.8)
+text(ord, display = 'species',
+     cex = 0.7, col = 'grey30')
+
+vectors2 <- fortify(trait_fit) %>% 
+  mutate(xend=NMDS1,
+         yend=NMDS2,
+         lab = case_when(
+           Label == 'nestsBurrow' ~ 'Burrow',
+           Label == 'nestsHollow' ~ 'Hollow',
+           Label == 'nestsTree' ~ 'Tree',
+           Label == 'guildInsectivore' ~ 'Insectivore',
+           Label == 'guildOmnivore'~ 'Omnivore',
+           Label == 'guildHerbivore' ~ 'Herbivore',
+           Label == 'foragArboreal' ~ 'Arboreal',
+           Label == 'foragGround' ~ 'Ground',
+           Label == 'foragScansorial' ~ 'Scansorial'
+         ))
+
+vectors3 <- vectors %>% 
+  mutate(
+    xlab = case_when(
+      Label=='soft_cwd_volume'~xlab+0.22,
+      Label=='pca_score'~xlab,
+      TRUE~xlab
+    ),
+    ylab = case_when(
+      Label=='soft_cwd_volume'~ylab,
+      Label=='pca_score'~ylab,
+      TRUE~ylab
+    )
+  )
+
+```
+
+<br>
+
+**Clean NMDS plots with ggplot:**
+
+#### Plot
+
+```{r}
+
+# Plot
+
+ggplot() +
+  geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2, color=group),
+            size=0.6) +
+  geom_segment(data=vectors2, aes(x=0, y=0, xend=NMDS1, yend=NMDS2),
+               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.6) +
+  geom_text(data=vectors2, aes(x=NMDS1, y=NMDS2, label=lab),
+            size=4) +
+  geom_segment(data=vectors3[c(3,6),], aes(x=0, y=0, xend=xend, yend=yend,),
+               arrow=arrow(length=unit(0.02, 'npc'), type='closed'),
+               size=0.6, linetype=5) +
+  geom_text(data=vectors3[c(3,6),], aes(x=xlab, y=ylab, label=lab),
+            size=4, fontface='bold') +
+  geom_label(data=site_points, aes(x=0.82, y=-0.7,
+                                   label='NMDS in 3 dim\n2 dim displayed\nstress = 0.09'),
+             size=4) +
+  scale_color_manual(values=c('#4AB793', '#DCA827', '#D85F2B')) +
+  scale_shape_manual(values=c(19,17,15)) +
+  scale_x_continuous(limits=c(-1.6,1.15)) +
+  scale_y_continuous(limits=c(-0.9,0.71)) +
+  theme_classic() +
+  theme(panel.border=element_rect(fill=NA),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        legend.position='none') +
+  coord_fixed(clip='off')
+
+ggsave('figs/fig5b2.png', plot=last_plot(),
+       width=4.5, height=3.5, units='in')
+
+```
+
+```{r}
+
+# Species labels
+
+spp_points2 <- spp_points %>% 
+  full_join(smamm_meta[c(1,5)], by = c('Label'='species')) %>% 
+  mutate(xdat=NMDS1*0.61,
+         ydat=NMDS2*0.7)
+
+ggplot() +
+  geom_text_repel(data=spp_points2, aes(x=-1, y=ydat, label=common_name),
+                  direction='y', segment.alpha=0, hjust=0,
+                  size=3.5, color='grey40', point.padding = 0) +
+  scale_x_continuous(limits=c(-1.6,1.15)) +
+  scale_y_continuous(limits=c(-0.9,0.7)) +
+  theme_classic() +
+  theme(panel.border=element_rect(fill=NA),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        legend.position='none') +
+  coord_fixed(clip='off')
+
+
+ggsave('figs/nmdsspecies1.png', plot=last_plot(),
+       width=4.5, height=3.5, units='in')
+
+ggplot() +
+  geom_text_repel(data=spp_points2, aes(x=xdat, y=-0.7, label=common_name),
+                  direction='x', segment.alpha=0, vjust=0,
+                  size=3.5, color='grey40', angle=90, point.padding = 0) +
+  scale_x_continuous(limits=c(-1.6,1.15)) +
+  scale_y_continuous(limits=c(-0.9,0.7)) +
+  theme_classic() +
+  theme(panel.border=element_rect(fill=NA),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        legend.position='none') +
+  coord_fixed(clip='off')
+
+ggsave('figs/nmdsspecies2.png', plot=last_plot(),
+       width=4.5, height=3.5, units='in')
+  
 ```
 
 ```{r eval=FALSE}

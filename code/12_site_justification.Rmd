@@ -58,7 +58,7 @@ evc_2014_pixels <- read_csv('output_data/EVC_2014_pixels.csv')
 
 # vectors
 
-year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
+year.labs <- c("2012\nPre-fire", "2014\nPost-fire")
 names(year.labs) <- c("2012", "2014")
 
 ```
@@ -99,6 +99,9 @@ evc_14 <- evc_2014 %>%
 
 ```{r, include=FALSE}
 
+year.labs <- c("2012\nPre-fire", "2014\nPost-fire")
+names(year.labs) <- c("2012", "2014")
+
 # EVC plot
 evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>% 
   rename('2012'=sum.x, '2014'=sum.y, EVC=CLASSNAMES) %>% 
@@ -106,14 +109,14 @@ evc_plot <- full_join(evc_12, evc_14, by = c('severity', 'CLASSNAMES')) %>%
   gather(year, pixels, 3:4) %>% 
   ggplot(aes(x = severity, y = pixels, fill = EVC)) +
     geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = '% Cover of the Dominant Lifeform',
+    scale_fill_manual(name = '% Cover of the dominant lifeform',
                       values = c('#ffce8a','#e89a61',
                                  '#c7e9c0','#a1d99b','#74c476','#41ab5d','#238b45','#005a32'),
                       labels = c('Herb: 20-30%',
                                  'Shrub: 50-60%',
                                  'Tree: 20-30%','Tree: 30-40%','Tree: 40-50%',
                                  'Tree: 50-60%','Tree: 60-70%','Tree: 70-80%')) +
-    labs(y = 'Proportional Area') +
+    labs(y = 'Proportional area') +
     scale_y_continuous(expand = c(0,0),
                        labels = c(0,25,50,75,100)) +
     theme_classic() +
@@ -254,9 +257,6 @@ cwhr_14 <- cwhr_2014 %>%
 ```{r, include=FALSE}
 
 # CWHR plot
-year.labs <- c("2012\nPre-Fire", "2014\nPost-Fire")
-names(year.labs) <- c("2012", "2014")
-
 cwhr_plot <- full_join(cwhr_12, cwhr_14, by = c('severity', 'cwhr')) %>% 
   rename('2012' = sum.x, '2014' = sum.y) %>% 
   select(severity, cwhr, '2012', '2014') %>% 
@@ -269,7 +269,7 @@ cwhr_plot <- full_join(cwhr_12, cwhr_14, by = c('severity', 'cwhr')) %>%
   gather(year, pixels, 3:4) %>% 
   ggplot(aes(x = severity, y = pixels, fill = cwhr)) +
     geom_bar(position = 'fill', stat = 'identity') +
-    scale_fill_manual(name = 'CWHR Habitat Type',
+    scale_fill_manual(name = 'CWHR habitat type',
                       values = c('#EDDB3B', '#DD9C33', '#6baed6',
                                  '#79BC2D', '#6F8932', '#ACBA2E'),
                       labels = c('Perennial grassland',
@@ -278,8 +278,8 @@ cwhr_plot <- full_join(cwhr_12, cwhr_14, by = c('severity', 'cwhr')) %>%
                                  'Ponderosa/Jeffrey pine',
                                  'Red fir',
                                  'Sierran mixed conifer forest')) +
-    labs(y = 'Proportional Area') +
-    scale_x_discrete(labels = c('Unburned', 'Low-Mod.\nSeverity', 'High\nSeverity')) +
+    labs(y = 'Proportional area') +
+    scale_x_discrete(labels = c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')) +
     scale_y_continuous(expand = c(0,0),
                        labels = c(0,25,50,75,100)) +
     theme_classic() +
@@ -523,8 +523,9 @@ ggplot(tree, aes(x=dummy)) +
   facet_wrap(~severity)
 
 # Wilcoxon ranked sum test
+
 tree_unb <- tree %>% 
-  filter(severity=='unb') %>% 
+  filter(severity=='unb')%>% 
   wilcox_test(dummy ~ year)
 tree_mod <- tree %>% 
   filter(severity=='mod') %>% 
@@ -772,35 +773,39 @@ ggsave('figs/fig1D.png', plot = last_plot(),
 
 ```{r}
 
-colors <- c('darkgreen', 'orange', 'red')
-sevs <- c('Unburned', 'Low-Mod\nSeverity', 'High\nSeverity')
+colors <- c('#4AB793', '#DCA827', '#D85F2B')
+sevs <- c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')
 
 set.seed(3)
 mtbs_plot <- metrics %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=avg_pixel, color=severity), width=0.1, size=1.5) +
+  geom_jitter(aes(x=severity, y=avg_pixel, color=severity, shape=severity),
+              width=0.1, size=1.5) +
   geom_boxplot(aes(x=severity, y=avg_pixel), fill=NA, outlier.shape=NA) +
   scale_color_manual(values=colors) +
+  scale_shape_manual(values=c(19,17,15)) +
   theme_classic() +
   theme(legend.position = 'NA',
         axis.text.y = element_text(size = 9),
         axis.text.x = element_blank()) +
-  scale_y_continuous(limits=c(-0.01,4.5), expand=c(0,0), breaks=c(0,1,2,3,4)) +
+  scale_y_continuous(limits=c(-0.01,4.5), breaks=c(0,1,2,3,4)) +
   labs(x='', y='MTBS severity')
 
 set.seed(4)
 tree_plot <- metrics %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=tree_mortality, color=severity), width=0.1, size=1.5) +
+  geom_jitter(aes(x=severity, y=tree_mortality, color=severity, shape=severity),
+              width=0.1, size=1.5) +
   geom_boxplot(aes(x=severity, y=tree_mortality), fill=NA, outlier.shape=NA) +
   scale_color_manual(values=colors) +
+  scale_shape_manual(values=c(19,17,15)) +
   theme_classic() +
   theme(legend.position = 'NA',
         axis.text.y = element_text(size = 9),
         axis.text.x = element_text(size = 7)) +
-  scale_y_continuous(limits=c(-0.2,100.2), expand=c(0,0), breaks=c(0,25,50,75,100)) +
+  scale_y_continuous(limits=c(-0.2,100.2), breaks=c(0,25,50,75,100)) +
   scale_x_discrete(labels=sevs) +
-  labs(x='', y='% tree mortality')
+  labs(x='', y='% Tree mortality')
 
 plot_grid(mtbs_plot, tree_plot,
           ncol = 1, align = 'v',
