@@ -1,8 +1,10 @@
 ---
 title: "Spatial Metrics"
 author: "Kate Culhane"
-date: "January 7, 2019"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -14,29 +16,28 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 <br>
 
-### Spatial Data
+*Calculation of fire severity and habitat characteristics for each site, using spatial data.*
+
+<br>
+
+## Spatial Datasets
 
 - **Monitoring Trends in Burn Severity (MTBS)**
-  - Fire severity data
+  - Thematic Burn Severity: *"Burn severity layers are thematic images depicting severity as unburned to low, low, moderate, high, and increased greenness (increased postfire vegetation response). The layer may also have a sixth class representing a mask for clouds, shadows, large water bodies, or other features on the landscape that erroneously affect the severity classification."*
+  -https://mtbs.gov/product-descriptions
 - **LANDFIRE**
-  - Data from 2012 (pre-burn)
-    - VCC
-    - EVC
-    - EVT
-  - Data from 2014 (post-burn)
-    - EVC
-    - EVT
-  - Data from 2016 (sampling)
-    - EVC
-    - EVT
-
-*LANDFIRE data are not available annually because they represent a composite of remote sensing data from a range of 2-3 years.*
-
-```{r packages and data, include=FALSE}
+  - Spatial products *"created using predictive landscape models based on extensive field-referenced data, satellite imagery and biophysical gradient layers using classification and regression trees."*
+  - Existing Vegetation Cover (EVC): *"Vertically projected percent cover ofthe live canopy layer for a specific area."*
+  - Existing Vegetation Type(EVT): *Complexes of plant communities.*
+    - Later converted to California Wildlife Habitat Relationships (CWHR) classes for analysis
+  - Retrieved data from 2012 (pre-burn) and 2014 (post-burn)
+    - *Note: LANDFIRE data are not available annually because they represent a composite of remote sensing data from a range of 2-3 years. 2016 data (corresponding to the field sampling period) were not used because they were developed using different methods from 2012 and 2014.*
+  - https://www.landfire.gov/data_overviews.php
+  
+```{r include=FALSE}
 
 # Load packages
 
-library(tidyverse)
 library(raster) # for raster work
 library(rgdal) # for vector work (includes 'sp')
 library(sf)
@@ -45,12 +46,7 @@ library(mapview)
 library(spatialEco) # for several landscape metrics
 library(geosphere)
 library(rgeos) # gDistance function
-
-# Update functions
-
-select <- dplyr::select
-summarize <- dplyr::summarize
-rename <- dplyr::rename
+library(tidyverse)
 
 # Load data
 
@@ -70,41 +66,25 @@ bndy_shp <- readOGR(dsn = 'raw_data/spatial_data',
 
 # LANDFIRE data
 
-# VVC (Vegetation Condition Classes)
-vvc_landfire <- raster("raw_data/spatial_data/vcc/hdr.adf")
-vcc_raster <- projectRaster(vvc_landfire, crs=crs(mtbs_raster))
-
 # EVT (Existing Vegetation Type)
 evt_landfire_2012 <- raster("raw_data/spatial_data/evt_2012/hdr.adf")
 evt_2012 <- projectRaster(evt_landfire_2012, crs=crs(mtbs_raster))
 evt_landfire_2014 <- raster("raw_data/spatial_data/evt_2014/hdr.adf")
 evt_2014 <- projectRaster(evt_landfire_2014, crs=crs(mtbs_raster))
-evt_landfire_2016 <- raster("raw_data/spatial_data/evt_2016/hdr.adf")
-evt_2016 <- projectRaster(evt_landfire_2016, crs=crs(mtbs_raster))
-
-# EVH (Existing Vegetation Height)
-evh_landfire_2012 <- raster("raw_data/spatial_data/evh_2012/hdr.adf")
-evh_2012 <- projectRaster(evh_landfire_2012, crs=crs(mtbs_raster))
-evh_landfire_2014 <- raster("raw_data/spatial_data/evh_2014/hdr.adf")
-evh_2014 <- projectRaster(evh_landfire_2014, crs=crs(mtbs_raster))
-evh_landfire_2016 <- raster("raw_data/spatial_data/evh_2016/hdr.adf")
-evh_2016 <- projectRaster(evh_landfire_2016, crs=crs(mtbs_raster))
 
 # EVC (Existing Vegetation Cover)
 evc_landfire_2012 <- raster("raw_data/spatial_data/evc_2012/hdr.adf")
 evc_2012 <- projectRaster(evc_landfire_2012, crs=crs(mtbs_raster))
 evc_landfire_2014 <- raster("raw_data/spatial_data/evc_2014/hdr.adf")
 evc_2014 <- projectRaster(evc_landfire_2014, crs=crs(mtbs_raster))
-evc_landfire_2016 <- raster("raw_data/spatial_data/evc_2016/hdr.adf")
-evc_2016 <- projectRaster(evc_landfire_2016, crs=crs(mtbs_raster))
 
 ```
 
 <br>
 
-### Burn severity map
+## Burn severity map
 
-```{r spatial data wrangling, include=FALSE}
+```{r, include=FALSE}
 
 # Vector shapefile for the site corners
 
@@ -150,7 +130,7 @@ write_csv(site_centroids,'output_data/site_centroids.csv', col_names = TRUE)
 
 ```
 
-```{r create site polygons, include=FALSE}
+```{r include=FALSE}
 
 # Create polygons from site corner coords
 
@@ -249,263 +229,12 @@ for (i in unique(grid_corners_df$site)) {
 ```
 
 - Burn severity data from MTBS (Monitoring Trends in Burn Severity)
-- Buffered mammal grids shown in blue (mammal grids buffered by the largest home range of a trapped mammals)
+- Buffered mammal grids shown in blue
+  - Buffer is equal to the largest home range of a trapped mammal: *G. sabrinus*, 0.04 km^2^
 
 <br>
 
-### Pre- vs. post- disturbance habitat characteristics
-
-#### Existing Vegetation Type (EVT)
-
-```{r, fig.height=3, fig.width=3}
-
-# Maps of EVT in the northern burn area
-
-# 2012
-plot(evt_2012, main='EVT 2012', axes=FALSE, legend=FALSE)
-
-# 2014
-plot(evt_2014, main='EVT 2014', axes=FALSE, legend=FALSE)
-
-# 2016
-plot(evt_2016, main='EVT 2016', axes=FALSE, legend=FALSE)
-
-```
-
-```{r eval=FALSE}
-
-# EVT 2012
-evt_2012_pixels <- data.frame(site = character(), evt = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evt_2012, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evt = hdr) %>% 
-    select(site, evt)
-  evt_2012_pixels <- rbind(evt_2012_pixels, df) # add 1 row per pixel to df
-}
-evt_2012_summary <- evt_2012_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evt = round(evt,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evt)
-write_csv(evt_2012_summary, 'output_data/EVT_2012.csv', col_names = TRUE)
-
-# EVT 2014
-evt_2014_pixels <- data.frame(site = character(), evt = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evt_2014, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evt = hdr) %>% 
-    select(site, evt)
-  evt_2014_pixels <- rbind(evt_2014_pixels, df) # add 1 row per pixel to df
-}
-evt_2014_summary <- evt_2014_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evt = round(evt,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evt)
-write_csv(evt_2014_summary, 'output_data/EVT_2014.csv', col_names = TRUE)
-
-# EVT 2016
-evt_2016_pixels <- data.frame(site = character(), evt = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evt_2016, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evt = hdr) %>% 
-    select(site, evt)
-  evt_2016_pixels <- rbind(evt_2016_pixels, df) # add 1 row per pixel to df
-}
-evt_2016_summary <- evt_2016_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evt = round(evt,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evt)
-write_csv(evt_2016_summary, 'output_data/EVT_2016.csv', col_names = TRUE)
-
-```
-
-#### Existing Vegetation Height (EVH)
-
-```{r, fig.height=3, fig.width=3}
-
-# Maps of EVH in the northern burn area
-
-# 2012
-plot(evh_2012, main='EVH 2012', axes=FALSE, legend=FALSE)
-
-# 2014
-plot(evh_2014, main='EVH 2014', axes=FALSE, legend=FALSE)
-
-# 2016
-plot(evh_2016, main='EVH 2016', axes=FALSE, legend=FALSE)
-
-```
-
-```{r eval=FALSE}
-
-# EVH 2012
-evh_2012_pixels <- data.frame(site = character(), evh = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evh_2012, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evh = hdr) %>% 
-    select(site, evh)
-  evh_2012_pixels <- rbind(evh_2012_pixels, df) # add 1 row per pixel to df
-}
-evh_2012_summary <- evh_2012_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evh = round(evh,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evh)
-write_csv(evh_2012_summary, 'output_data/EVH_2012.csv', col_names = TRUE)
-
-# EVH 2014
-evh_2014_pixels <- data.frame(site = character(), evh = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evh_2014, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evh = hdr) %>% 
-    select(site, evh)
-  evh_2014_pixels <- rbind(evh_2014_pixels, df) # add 1 row per pixel to df
-}
-evh_2014_summary <- evh_2014_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evh = round(evh,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evh)
-write_csv(evh_2014_summary, 'output_data/EVH_2014.csv', col_names = TRUE)
-
-# EVH 2016
-evh_2016_pixels <- data.frame(site = character(), evh = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evh_2016, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evh = hdr) %>% 
-    select(site, evh)
-  evh_2016_pixels <- rbind(evh_2016_pixels, df) # add 1 row per pixel to df
-}
-evh_2016_summary <- evh_2016_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evh = round(evh,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evh)
-write_csv(evh_2016_summary, 'output_data/EVH_2016.csv', col_names = TRUE)
-
-```
-
-#### Existing Vegetation Cover (EVC)
-
-```{r, fig.height=3, fig.width=3}
-
-# Maps of EVC in the northern burn area
-
-# 2012
-plot(evc_2012, main='EVC 2012', axes=FALSE, legend=FALSE)
-
-# 2014
-plot(evc_2014, main='EVC 2014', axes=FALSE, legend=FALSE)
-
-# 2016
-plot(evc_2016, main='EVC 2016', axes=FALSE, legend=FALSE)
-
-```
-
-```{r eval=FALSE}
-
-# EVC 2012
-evc_2012_pixels <- data.frame(site = character(), evc = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evc_2012, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evc = hdr) %>% 
-    select(site, evc)
-  evc_2012_pixels <- rbind(evc_2012_pixels, df) # add 1 row per pixel to df
-}
-evc_2012_summary <- evc_2012_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evc = round(evc,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evc)
-write_csv(evc_2012_summary, 'output_data/EVC_2012.csv', col_names = TRUE)
-write_csv(evc_2012_pixels, 'output_data/EVC_2012_pixels.csv', col_names = TRUE)
-
-# EVC 2014
-evc_2014_pixels <- data.frame(site = character(), evc = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evc_2014, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evc = hdr) %>% 
-    select(site, evc)
-  evc_2014_pixels <- rbind(evc_2014_pixels, df) # add 1 row per pixel to df
-}
-evc_2014_summary <- evc_2014_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evc = round(evc,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evc)
-write_csv(evc_2014_summary, 'output_data/EVC_2014.csv', col_names = TRUE)
-write_csv(evc_2014_pixels, 'output_data/EVC_2014_pixels.csv', col_names = TRUE)
-
-# EVC 2016
-evc_2016_pixels <- data.frame(site = character(), evc = numeric())
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(evc_2016, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(evc = hdr) %>% 
-    select(site, evc)
-  evc_2016_pixels <- rbind(evc_2016_pixels, df) # add 1 row per pixel to df
-}
-evc_2016_summary <- evc_2016_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(evc = round(evc,0)) %>% 
-  group_by(site, severity) %>% 
-  count(evc)
-write_csv(evc_2016_summary, 'output_data/EVC_2016.csv', col_names = TRUE)
-
-```
-
-#### Vegetation Condition Classes (VCC)
-
-```{r}
-
-# Map of VCC in the northern burn area
-
-plot.new()
-plot(vcc_raster)
-
-```
-
-```{r eval=FALSE}
-
-# Create data frame with a row for each pixel in each expanded site
-
-vcc_pixels <- data.frame(site = character(), # blank data frame
-                         vcc = numeric())
-
-for (i in unique(grid_corners_df$site)) {
-  df <- extract(vcc_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
-    mutate(site = i) %>% 
-    dplyr::rename(vcc = hdr) %>% 
-    select(site, vcc)
-  vcc_pixels <- rbind(vcc_pixels, df) # add pixel information to df, one row per pixel
-}
-
-vcc_summary <- vcc_pixels %>% 
-  full_join(site_meta[3:4]) %>% 
-  mutate(vcc = round(vcc,0)) %>% 
-  group_by(site, severity) %>% 
-  count(vcc)%>% 
-  filter(n/sum(n) > 0.1) %>% # remove pixels that make up <10% of the habitat 
-  mutate(vcc = case_when(
-    vcc == 3 ~ 'Vegetation Condition Class II.A Moderate to Low, Vegetation Departure 34-50% Vegetation Condition Class II Moderate Vegetation Departure',
-    vcc == 4 ~ 'Vegetation Condition Class II.B Moderate to High, Vegetation Departure 51-66% Vegetation Condition Class II Moderate Vegetation Departure'
-  ))
-
-```
-
-<br>
-
-### Calculating spatial metrics
+Spatial metrics calculated to justify fire severity categories:
 
 - **Average severity:** average MTBS pixel value within buffered site boundaries
 
@@ -573,22 +302,127 @@ write_csv(spatial_metrics, 'output_data/spatial_metrics.csv', col_names = TRUE)
 
 ```
 
-### Distance between sites
-
 ```{r distance between sites, eval=FALSE}
+
+# PAIRWISE DISTANCE BETWEEN SITES
 
 # Calculate distances between each pair of sites
 
 dist_all <- as.data.frame(pointDistance(site_points))
-
 dist_unb <- as.data.frame(pointDistance(site_points[1:9,]))
-
 dist_mod <- as.data.frame(pointDistance(sites_aea[19:27,]))
-
 dist_high <- as.data.frame(pointDistance(sites_aea[10:18,]))
 
 ```
 
+<br>
+
+## Pre- vs. post- disturbance habitat characteristics
+
+### Existing Vegetation Type (EVT)
+
+```{r, fig.height=4, fig.width=4}
+
+# Maps of EVT in the northern burn area
+
+# 2012
+plot(evt_2012, main='EVT 2012', axes=FALSE, legend=FALSE)
+
+# 2014
+plot(evt_2014, main='EVT 2014', axes=FALSE, legend=FALSE)
+
+```
+
 ```{r eval=FALSE}
-rmarkdown::render('code/06_spatial_metrics.Rmd', output_file = '../docs/06_spatial_metrics.html')
+
+# EVT 2012
+evt_2012_pixels <- data.frame(site = character(), evt = numeric())
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evt_2012, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evt = hdr) %>% 
+    select(site, evt)
+  evt_2012_pixels <- rbind(evt_2012_pixels, df) # add 1 row per pixel to df
+}
+evt_2012_summary <- evt_2012_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evt = round(evt,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evt)
+write_csv(evt_2012_summary, 'output_data/EVT_2012.csv', col_names = TRUE)
+
+# EVT 2014
+evt_2014_pixels <- data.frame(site = character(), evt = numeric())
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evt_2014, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evt = hdr) %>% 
+    select(site, evt)
+  evt_2014_pixels <- rbind(evt_2014_pixels, df) # add 1 row per pixel to df
+}
+evt_2014_summary <- evt_2014_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evt = round(evt,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evt)
+write_csv(evt_2014_summary, 'output_data/EVT_2014.csv', col_names = TRUE)
+
+```
+
+<br>
+
+### Existing Vegetation Cover (EVC)
+
+```{r, fig.height=4, fig.width=4}
+
+# Maps of EVC in the northern burn area
+
+# 2012
+plot(evc_2012, main='EVC 2012', axes=FALSE, legend=FALSE)
+
+# 2014
+plot(evc_2014, main='EVC 2014', axes=FALSE, legend=FALSE)
+
+```
+
+```{r eval=FALSE}
+
+# EVC 2012
+evc_2012_pixels <- data.frame(site = character(), evc = numeric())
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evc_2012, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evc = hdr) %>% 
+    select(site, evc)
+  evc_2012_pixels <- rbind(evc_2012_pixels, df) # add 1 row per pixel to df
+}
+evc_2012_summary <- evc_2012_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evc = round(evc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evc)
+write_csv(evc_2012_summary, 'output_data/EVC_2012.csv', col_names = TRUE)
+write_csv(evc_2012_pixels, 'output_data/EVC_2012_pixels.csv', col_names = TRUE)
+
+# EVC 2014
+evc_2014_pixels <- data.frame(site = character(), evc = numeric())
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(evc_2014, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(evc = hdr) %>% 
+    select(site, evc)
+  evc_2014_pixels <- rbind(evc_2014_pixels, df) # add 1 row per pixel to df
+}
+evc_2014_summary <- evc_2014_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(evc = round(evc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(evc)
+write_csv(evc_2014_summary, 'output_data/EVC_2014.csv', col_names = TRUE)
+write_csv(evc_2014_pixels, 'output_data/EVC_2014_pixels.csv', col_names = TRUE)
+
+```
+
+```{r eval=FALSE}
+rmarkdown::render('code/03_spatial_metrics.Rmd', output_file = '../docs/03_spatial_metrics.html')
 ```

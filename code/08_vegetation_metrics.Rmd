@@ -1,19 +1,28 @@
 ---
 title: "Vegetation Metrics"
 author: "Kate Culhane"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(eval=FALSE, include=FALSE)
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 ```
 
 <br>
 
-```{r packages and data}
+*Vegetation metrics hypothesized to a) shift after fire according to fire severity and b) influence small mammal community structure. Variables incorporated into GLM~veg~.*
+
+<br>
+
+### Metrics
+
+```{r include=FALSE}
 
 # Load packages
 library(vegan)
@@ -23,6 +32,7 @@ library(janitor)
 library(corrplot)
 library(ggbiplot)
 library(tidyverse)
+library(dunn.test)
 
 # Load data
 
@@ -41,14 +51,13 @@ tree <- read_csv('raw_data/field_data/veg_transect_tree.csv') %>% clean_names()
 
 ```
 
-### Vegetation metrics
-
 #### Tree density/survival
 
 - **Tree survival:** percent live trees (%)
-- **Live tree density:** number of live adult trees at both transects, divided by the transect area (number/m^2^)
+  - NOT included in GLM~veg~; used to justify fire severity categories
+- **Live tree density:** number of live adult trees at both transects, divided by the transect area (number/hectare)
 
-```{r trees}
+```{r include=FALSE}
 
 # Tree survival
 tree_survival <- tree %>%
@@ -72,11 +81,11 @@ live_tree_density <- tree %>%
 
 #### Cover
 
-- **Shrub cover:** percent cover of live shrubs
-- **Understory cover:** percent cover of live grass and live forbs combined (%)
-- **Litter cover:** percent cover by litter, e.g. leaves, dead grass, small sticks (%)
+- **Shrub cover:** percent cover of live shrubs (%)
+- **Forb/grass cover:** percent cover of live grass and live forbs combined (%)
+- **Litter cover:** percent cover of litter, e.g. leaves, dead grass, small sticks (%)
 
-```{r cover}
+```{r include=FALSE}
 
 # Shrub cover
 shrub_cover <- cover %>% 
@@ -122,11 +131,13 @@ litter_cover <- cover %>%
 
 ```
 
-#### CWD
+#### Coarse Woody Debris
 
-- **Coarse woody debris:** total volume per unit area (calculated from Waddell, 2002) (m^3^/m^2^)
+- **Coarse woody debris (CWD):** total volume per unit area (m^3^/hectare)
+  - Calculated according to Waddell, 2002 using Smalian's and DeVries' formuals
+  
 
-```{r CWD}
+```{r include=FALSE}
 
 # Coarse woody debris
 cwd_volume <- cwd %>%
@@ -153,7 +164,7 @@ soft_cwd_volume <- cwd %>%
 
 ```
 
-```{r combined variables}
+```{r include=FALSE}
 
 veg_metrics <- full_join(site_meta[2:4], shrub_cover) %>% 
   full_join(forb_grass_cover) %>% 
@@ -168,29 +179,11 @@ veg_metrics[is.na(veg_metrics)] <- 0
 
 <br>
 
-### By fire severity
-
-#### Differences between fire severity categories
+### Comparison by fire severity
 
 ```{r}
 
 veg <- pivot_longer(veg_metrics, cols=c(4:8), names_to = 'metric')
-
-# jitter plots with mean/se
-
-cols <- c('#4AB793', '#DCA827', '#D85F2B')
-xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
-
-ggplot(veg, aes(x = severity, y = value)) +
-  geom_jitter(aes(color = severity)) +
-  scale_color_manual(values = cols) +
-  stat_summary(fun.data = mean_se, geom = "crossbar", width = 0.5) +
-  theme_classic() +
-  labs(x = 'Fire Severity',
-       y = 'Total small mammal abundance') +
-  theme(legend.position = 'NA') +
-  scale_x_discrete(labels = xlabs) +
-  facet_wrap(~metric, scales = 'free')
 
 # Kruskal-Wallis
 for (i in unique(veg$metric)) {
@@ -202,6 +195,11 @@ for (i in unique(veg$metric)) {
   print(paste('H =',kw$statistic,'; p =',kw_bonf,'; effect size =',kw_eff$effsize,'; magnitude:', kw_eff$magnitude))
 }
 
+```
+
+```{r eval=FALSE, include=FALSE}
+
+# Post-hoc tests
 
 veg %>% 
   filter(metric=='live_tree_density') %>% 
@@ -217,7 +215,14 @@ veg %>%
 
 ```
 
-#### Correlations
+- Significant with a large effect size:
+  - percent shrub cover
+  - percent litter cover
+  - live tree density
+
+<br>
+
+### Correlations between metrics
 
 ```{r}
 
@@ -243,18 +248,19 @@ corrplot(veg_cor,
 as.data.frame(veg_cor) %>% 
   mutate(variable1 = rownames(veg_cor)) %>%
   gather(variable2, cor_strength, 1:5) %>% 
-  # filter(cor_strength != 1,
-  #        cor_strength > 0.5 | cor_strength < -0.5) %>%
+  filter(cor_strength != 1) %>%
   arrange(-cor_strength) %>% 
   distinct(cor_strength, .keep_all = TRUE)
 
 ```
 
-Significant with a large effect size: shrub_cover, leaf_cover, live_tree_density. Unsurprisingly, these three variables are highly correlated.
+- Unsurprisingly, the three variables that changed with fire severity are highly correlated.
 
-#### PCA
+<br>
 
-```{r}
+### PCA
+
+```{r fig.width=4, fig.height=3}
 
 # PCA of fire variables
 
@@ -263,8 +269,6 @@ veg_fire <- veg_metrics %>%
 
 veg_pca <- prcomp(veg_fire[3:5],
                   scale = TRUE) # scales the data
-
-summary(veg_pca) # PC1 describes 73.4% of the variance
 
 colors <- c('darkgreen', 'orange', 'red')
 
@@ -278,10 +282,17 @@ pca_scores <- data.frame(veg_pca$x) %>%
   select(site, severity, PC1) %>% 
   rename(pca_score = PC1)
 
+summary(veg_pca) # PC1 describes 73.4% of the variance
+
 # Write CSV
 all_metrics <- full_join(veg_metrics, pca_scores)
 write_csv(all_metrics,'output_data/veg_metrics.csv', col_names = TRUE)
 
+```
+
+```{r include=FALSE, eval=FALSE}
+
+# Stats
 # Kruskal Wallis, Dunn
 all_metrics %>% kruskal_test(pca_score~severity)
 all_metrics %>% kruskal_effsize(pca_score~severity)
@@ -289,9 +300,11 @@ all_metrics %>% dunn_test(pca_score~severity, p.adjust.method='bonferroni')
 
 ```
 
-#### Final plots
+<br>
 
-```{r}
+### Figures
+
+```{r fig.width=6, fig.height=4}
 
 cols <- c('#4AB793', '#DCA827', '#D85F2B')
 sevs <- c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')
@@ -379,20 +392,28 @@ plot_grid(tree_plot, shrub_plot, leaf_plot, pca_plot,
           ncol = 2, align = 'v',
           rel_heights = c(1,1.1))
 
-ggsave('figs/vegfig.png', plot = last_plot(),
+ggsave('figs/fig5a.png', plot = last_plot(),
        width = 5.5, height = 4, units = 'in')
+
+```
+
+- **Figure 5a**
+- Metrics that differed among fire severity categories, as well as PC1
+
+```{r fig.height=4, fig.width=3}
 
 plot_grid(cwd_plot, ferb_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1,1.1))
 
-ggsave('figs/vegfig2.png', plot = last_plot(),
+ggsave('figs/fig5b.png', plot = last_plot(),
        width = 3, height = 4, units = 'in')
 
 ```
 
+- **Figure 5b**
+- Metrics that were similar among fire severity categories
 
-
-```{r eval=FALSE}
-rmarkdown::render('code/05_vegetation_metrics.Rmd', output_file = '../docs/05_vegetation_metrics.html')
+```{r eval=FALSE, include=FALSE}
+rmarkdown::render('code/08_vegetation_metrics.Rmd', output_file = '../docs/08_vegetation_metrics.html')
 ```

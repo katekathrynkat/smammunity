@@ -1,7 +1,10 @@
 ---
 title: "NMDS"
 author: "Kate Culhane"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -17,17 +20,12 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 ```{r packages and data}
 
 # Load packages
-
-library(tidyverse)
 library(vegan)
 library(goeveg)
 library(pairwiseAdonis)
 library(ggvegan)
 library(ggrepel)
-
-# Update functions
-
-select <- dplyr::select
+library(tidyverse)
 
 # Load data
 
@@ -62,17 +60,15 @@ matrix_hell <- decostand(matrix, 'hellinger')
 matrix_sqrt <- sqrt(matrix)
 
 # Severity data frame
-
 sevs <- select(matrix_df, site, severity)
 
 ```
 
-### Community structure
+## Community structure
 
-For choosing transformation and standardization methods: https://chrischizinski.github.io/SNR_R_Group/2016-08-10-Data-Transformations
+[*Overview of data transformation and standardization methods*](https://chrischizinski.github.io/SNR_R_Group/2016-08-10-Data-Transformations)
 
-
-```{r nmds}
+```{r include=FALSE}
 
 # NMDS with relative abundance data (2 dimensions)
 set.seed(17)
@@ -82,6 +78,12 @@ ord <- metaMDS(matrix_adj,
                k = 2,
                try=50)
 ord$stress # 0.09
+
+```
+
+```{r, fig.height=4, results='hide',fig.keep='all', fig.show="hold", out.width="50%"}
+
+# Stress plot
 stressplot(ord)
 
 # Scree plot to check stress per number of dimensions
@@ -91,7 +93,20 @@ dimcheckMDS(matrix_hell, distance = "bray", autotransform = FALSE, k = 10, tryma
 
 **NMDS plot showing community structure across the three fire severities:** 
 
-```{r nmds plot, echo=FALSE}
+- Species codes:
+    - SPBE = California ground squirrel
+    - GLSA = northern flying squirrel
+    - TAAM = yellow-pine chipmunk
+    - TAQU = long-eared chipmunk
+    - TASE = shadow chipmunk
+    - NEFU = dusky-footed woodrat
+    - PEMA = North American deer mouse
+    - PEBO = brush mouse
+    - PETR = Pinyon mouse
+    - REME = western harvest mouse
+    - SOTR = Trowbridge's shrew
+    
+```{r}
 
 cols <- c('darkgreen', 'orange', 'red')
 par(mar = c(4,4,1,1))
@@ -105,7 +120,17 @@ text(ord, display = 'species',
 
 ```
 
-```{r ANOSIM and adonis, eval=FALSE}
+- Raw data standardized using the Hellinger method
+- Uses Bray-Curtis dissimilarity matrix
+- 3-dimensional ordination (2 dimensions shown)
+- Stress = 0.09
+- Appears to be fewer sites because some of them exactly overlap
+
+<br>
+
+### ANOSIM
+
+```{r include=FALSE}
 
 # Attach severity data to species matrix
 matrix_hell
@@ -113,8 +138,17 @@ attach(sevs)
 
 # Compare community similarity across fire severities using ANOSIM
 smamm_ano <- anosim(matrix_hell, severity)
-summary(smamm_ano)
+
+```
+
+```{r fig.height=4, fig.width=4}
+
 plot(smamm_ano)
+summary(smamm_ano)
+
+```
+
+```{r include=FALSE}
 
 # Compare community dispersion across fire severities using betadisper
 smamm_dist <- vegdist(matrix_hell)
@@ -129,9 +163,15 @@ anova(smamm_bd)
 # p > 0.05 for both --> no difference in dispersion across fire severities
 # Satisfies the assumption for adonis
 
+```
+
+<br>
+
+### Adonis
+
+```{r}
 
 # Compare community similarity across fire severities using adonis
-# Adonis is more robust because it is less sensitive to dispersion
 smamm_ado <- adonis(matrix_hell ~ severity,
                     permuatations = 999,
                     method = 'bray')
@@ -140,41 +180,19 @@ smamm_ado
 # Pairwise Adonis
 smamm_ado_pw <- pairwise.adonis(matrix_hell, severity,
                                 sim.method = 'bray',
-                                p.adjust.m = 'holm')
-
+                                p.adjust.m = 'bonferroni')
 smamm_ado_pw
 
 ```
 
-
-        pairs Df  SumsOfSqs    F.Model         R2 p.value p.adjusted sig
-    1  unb vs mod  1 0.31713367  4.9151490 0.23500425   0.002      0.006   *
-    2 unb vs high  1 0.45329584 10.2675595 0.39088365   0.001      0.003   *
-    3 mod vs high  1 0.05364198  0.9347399 0.05519659   0.466      1.000    
-
-- NMDS in two dimensions using relative abundance species matrix and Wisconsin correction on Bray-Curtis distances
-- Appears to be fewer sites because some of them exactly overlap
-- Adonis F=4.739, p=0.002
-- Pairwise Adonis unb vs. mod p=0.018, unb vs high p=0.003 (Bonferroni correction)
-- Considered using ANOSIM instead of Adonis, but Adonis is more robust because it is less sensitive to dispersion (also used betadisper to determine that dispersion was similar across treatments in order to satisfy assumptions of Adonis)
-- Species codes:
-    - SPBE = California ground squirrel
-    - GLSA = northern flying squirrel
-    - TAAM = yellow-pine chipmunk
-    - TAQU = long-eared chipmunk
-    - TASE = shadow chipmunk
-    - NEFU = dusky-footed woodrat
-    - PEMA = North American deer mouse
-    - PEBO = brush mouse
-    - PETR = Pinyon mouse
-    - REME = western harvest mouse
-    - SOTR = Trowbridge's shrew
+- Adonis is more robust because it is less sensitive to dispersion
+- Used betadisper to determine that dispersion was similar across treatments in order to satisfy assumptions of Adonis
 
 <br>
 
-### Habitat drivers
+## Habitat drivers
 
-```{r model nmds}
+```{r include=FALSE}
 
 # Data frame with only the variables from the model
 model_vars <- veg_metrics %>% 
@@ -199,15 +217,7 @@ text(ord, display = 'species',
 
 ```
 
-<br> 
-
-**Clean NMDS plots with ggplot:**
-
-#### Data
-
 ```{r, include=FALSE}
-
-# Ordination plot with ggplot
 
 # Data frames with point and vector informations
 
@@ -270,8 +280,6 @@ for(g in levels(site_points$group)){
 
 ```
 
-#### Plot
-
 ```{r}
   
 # Plot
@@ -299,16 +307,16 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/fig5b.png', plot=last_plot(),
+ggsave('figs/fig4b.png', plot=last_plot(),
        width=4.5, height=3.5, units='in')
 
 ```
 
-### Traits
+<br>
 
-#### Data
+## Traits
 
-```{r model nmds}
+```{r include=FALSE}
 
 # Data frame with mammal traits
 traits <- read_csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
@@ -360,12 +368,6 @@ vectors3 <- vectors %>%
 
 ```
 
-<br>
-
-**Clean NMDS plots with ggplot:**
-
-#### Plot
-
 ```{r}
 
 # Plot
@@ -395,12 +397,9 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/fig5b2.png', plot=last_plot(),
-       width=4.5, height=3.5, units='in')
-
 ```
 
-```{r}
+```{r, include=FALSE}
 
 # Species labels
 
@@ -421,10 +420,6 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-
-ggsave('figs/nmdsspecies1.png', plot=last_plot(),
-       width=4.5, height=3.5, units='in')
-
 ggplot() +
   geom_text_repel(data=spp_points2, aes(x=xdat, y=-0.7, label=common_name),
                   direction='x', segment.alpha=0, vjust=0,
@@ -437,11 +432,8 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/nmdsspecies2.png', plot=last_plot(),
-       width=4.5, height=3.5, units='in')
-  
 ```
 
 ```{r eval=FALSE}
-rmarkdown::render('code/08_nmds.Rmd', output_file = '../docs/08_nmds.html')
+rmarkdown::render('code/09_nmds.Rmd', output_file = '../docs/09_nmds.html')
 ```

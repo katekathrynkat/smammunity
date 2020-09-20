@@ -1,0 +1,270 @@
+---
+title: "Failed GLMMs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(lme4) # for GLMMs
+library(multcomp) # for GLMM Tukey
+library(piecewiseSEM) # for GLMM r-squared
+library(jtools) # for GLM plotting
+library(tidyverse)
+
+# Load data
+
+smamms <- read_csv('output_data/unique_smamms.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+captures <- read_csv('output_data/smamms.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+effort <- read_csv('output_data/effort.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+mass <- read_csv('output_data/species_mass.csv')
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+```
+
+
+### GLMM comparing total abundance among fire severities
+
+response ~ severity + random(block) + offset(effort)
+
+Abundance response variables (total, PEMA, and SOTR abundance): Poisson
+Other response variables (biomass): Gamma
+
+Richness, evenness: Gaussian???
+
+R2: https://jonlefcheck.net/2013/03/13/r2-for-linear-mixed-effects-models/
+Offsets: http://environmentalcomputing.net/interpreting-coefficients-in-glms/
+Communicating results: http://environmentalcomputing.net/mixed-models-3/
+Using GLMs instead of LMs: https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12552#support-information-section
+Choosing a family: https://datavoreconsulting.com/post/count-data-glms-choosing-poisson-negative-binomial-zero-inflated-poisson/
+
+```{r}
+
+# Plot mean vs. variance
+abundance %>% 
+  group_by(severity) %>% 
+  summarize(mean(n),
+            var(n))
+# Overdispersed data --> use negative binomial distribution
+
+# GLMMs
+glmm <- glmer.nb(data=abundance, n ~ severity + (1|block) + offset(offset))
+
+# Null model for comparison
+glmm_null <- glmer.nb(data=abundance, n ~ 1 + (1|block) + offset(offset))
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+
+
+
+# Create GLM
+glm <- glm.nb(data=abundance, n ~ severity + offset(offset))
+glm_null <- glm.nb(data=abundance, n ~ 1 + offset(offset))
+
+glm <- glm(data=abundance, n ~ severity + offset(offset), family=quasipoisson)
+
+# Predict model mean and SE
+dat <- tibble(severity=c('unb','mod','high'))
+pred <- predict(glm, newdata=dat, type='link', se=TRUE)
+exp <- exp(pred$fit)
+se_up <- exp(pred$fit + 1.96 * pred$se.fit)
+se_low <- exp(pred$fit - 1.96 * pred$se.fit)
+modfit <- tibble(dat,exp,se_up,se_low)
+
+
+
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Check for under/overdispersion
+E2 <- resid(glm, type = "pearson")
+N  <- nrow(abundance)
+p  <- length(coef(glm))   
+sum(E2^2) / (N - p)
+
+# Plot
+ggplot() +
+  geom_jitter(data=abundance, aes(x=severity, y=n, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=modfit, aes(x=severity, y=exp),
+             size=2) +
+  geom_errorbar(data=modfit, aes(x=severity, ymin=se_low, ymax=se_up),
+                width=0.2, size=0.6) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+```
+
+<br>
+
+### GLMM comparing PEMA abundance among fire severities
+
+```{r}
+
+# GLMM
+glmm <- glmer(data=pema, n_pema ~ severity + (1|block) + offset(offset),
+              family=poisson)
+
+# Null model for comparison
+glmm_null <- glmer(data=pema, n_pema ~ 1 + (1|block) + offset(offset),
+                  family=poisson)
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+# Create GLM without random effect (to test for fit of Poisson, and for plotting)
+glm <- glm(data=pema, n_pema ~ severity + offset(offset),
+           family=poisson)
+glm_null <- glm(data=pema, n_pema ~ 1 + offset(offset))
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Plot raw data and model predictions
+pred <- make_predictions(glm, pred='severity', data=pema)
+
+effect_plot(glm, pred=severity, data=pema,
+            plot.points=TRUE, jitter=.2)
+
+ggplot() +
+  geom_jitter(data=pema, aes(x=severity, y=n_pema, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=pred, aes(x=severity, y=n_pema),
+             size=3) +
+  geom_errorbar(data=pred, aes(x=severity, ymin=ymin, ymax=ymax),
+                width=0.2, size=1) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Deer mouse abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+<br>
+
+### GLMM comparing SOTR abundance among fire severities
+
+```{r}
+
+# GLMM
+glmm <- glmer(data=sotr, n_sotr ~ severity + (1|block) + offset(offset),
+              family=poisson)
+
+# Null model for comparison
+glmm_null <- glmer(data=sotr, n_sotr ~ 1 + (1|block) + offset(offset),
+                  family=poisson)
+
+# Check assumptions
+plot(glmm)
+ggqqplot(residuals(glmm))
+
+# Model stats
+summary(glmm)
+coef(glmm)
+ci <- confint(glmm, level=0.95, method='Wald')
+
+# Compare to null model
+anova(glmm, glmm_null, test='Chisq')
+
+# Test each severity category
+summary(glht(glmm, mcp(severity="Tukey")))
+
+# Model fit
+rsquared(glmm)
+
+# Create GLM without random effect (to test for fit of Poisson, and for plotting)
+glm <- glm(data=sotr, n_sotr ~ severity + offset(offset),
+           family=poisson)
+glm_null <- glm(data=sotr, n_sotr ~ 1 + offset(offset))
+
+glm <- glm(data=sotr, n_sotr ~ severity + offset(offset),
+           family=quasipoisson)
+
+# Test for fit of Poisson
+1-pchisq(summary(glm)$deviance, summary(glm)$df.residual)
+plot(glm)
+summary(glm)
+anova(glm, glm_null, test='Chisq')
+summary(glht(glm, mcp(severity="Tukey")))
+
+# Plot raw data and model predictions
+pred <- make_predictions(glm, pred='severity', data=sotr)
+
+effect_plot(glm, pred=severity, data=sotr,
+            plot.points=TRUE, jitter=.2)
+
+
+ggplot() +
+  geom_jitter(data=pema, aes(x=severity, y=n_pema, color=severity, shape=severity),
+              width=0.2, size=2) +
+  scale_color_manual(values=cols) +
+  scale_shape_manual(values=c(1,2,0)) +
+  geom_point(data=pred, aes(x=severity, y=n_pema),
+             size=3) +
+  geom_errorbar(data=pred, aes(x=severity, ymin=ymin, ymax=ymax),
+                width=0.2, size=1) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Deer mouse abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+```

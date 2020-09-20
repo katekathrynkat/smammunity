@@ -148,7 +148,7 @@ write_csv(matrix_adj, 'output_data/species_matrix_adj.csv')
 
 <br>
 
-**Species matrix**
+**Site by species matrix**
 
 ```{r, include=TRUE, echo=FALSE}
 

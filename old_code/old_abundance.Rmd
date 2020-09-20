@@ -1,0 +1,117 @@
+---
+title: "Old Abundance Analyses"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(fishmethods) # for Schnabel's estimate
+library(tidyverse)
+
+# Load data
+
+smamms <- read_csv('output_data/unique_smamms.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+captures <- read_csv('output_data/smamms.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+effort <- read_csv('output_data/effort.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+mass <- read_csv('output_data/species_mass.csv')
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+```
+
+
+## Population size by Schnabel's estimate
+
+```{r Schnabel estimate}
+
+# Calculating Schnabel's estimate of population size for each site
+
+# Data wrangling
+
+caps <- captures %>% 
+  dplyr::select(site, day, indID, recap) %>% 
+  filter(!is.na(indID))
+
+# Function that outputs a data frame with the vectors needed to calculate the Schnabel estimate
+# Input is the site code
+
+vectorify <- function(site_code) {
+  caps %>% 
+  filter(site == site_code) %>% 
+  group_by(day, recap) %>% 
+  summarize(n = length(indID)) %>% 
+  spread(key = recap, value = n, fill = 0) %>% 
+  mutate(catch = Y + N) %>% 
+  rename(recaps = Y,
+         newmarks = N)
+}
+
+# Calculate Schnabel's estimate for each site and create data frame of results
+
+pop_est <- data.frame(site = factor(),
+                      pop = numeric())
+
+for (i in unique(smamms$site)) {
+  schnabel_vecs <- vectorify(i)
+  schnabel <- schnabel(catch = schnabel_vecs$catch,
+              recaps = schnabel_vecs$recaps,
+              newmarks = schnabel_vecs$newmarks)
+  pop_est <- rbind(pop_est, data.frame(i, schnabel$N[1]))
+}
+
+# Combine abundance and Schnabel data frames
+
+cap_rate <- full_join(pop_est, abundance, by = c('i' = 'site')) %>% 
+  rename(site = i,
+         schnabel = 'schnabel.N.1.') %>% 
+  mutate(cap_rate = n/schnabel)
+
+```
+
+**Population size, as calculated from the Schnabel estimate:** 
+
+```{r Schnabel estimate boxplot}
+
+ggplot(cap_rate, aes(x = severity, y = schnabel)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Population Size (n)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+<br>
+
+**Capture rate at the three treatments:**
+
+```{r capture rate boxplot, echo=FALSE}
+
+ggplot(cap_rate, aes(x = severity, y = cap_rate)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Population Size (n)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+- Capture rate calculated as the number of unique individuals captured divided by the Schnabel estimate of population size.
+- All but three sites had a capture rate >75%.

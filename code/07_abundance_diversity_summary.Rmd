@@ -1,5 +1,5 @@
 ---
-title: "Summary Figure"
+title: "Abundance/Diversity Summary Figure"
 author: "Kate Culhane"
 output: html_document
 editor_options: 
@@ -8,8 +8,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
-                      fig.width=5, fig.height=3)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 ```
 
 <br>
@@ -72,7 +71,7 @@ names(metric_labs) <- c('n_adj', 'biomass', 'n_adj_pema', 'n_adj_sotr',
 
 ### Summary Figure
 
-```{r}
+```{r, fig.height=6, fig.width=5}
 
 set.seed(2)
 abun_plot <- metrics %>% 
@@ -166,10 +165,12 @@ plot_grid(abun_plot, biomass_plot, pema_plot, sotr_plot, rich_plot, even_plot,
           ncol = 2, align = 'v',
           rel_heights = c(1, 1, 1.2))
 
-ggsave('figs/fig2.png', plot = last_plot(),
+ggsave('figs/fig3.png', plot = last_plot(),
        width = 5, height = 6, units = 'in')
 ```
 
+- **Figure 3**
+
 ```{r eval=FALSE}
-rmarkdown::render('code/13_summary_fig.Rmd', output_file = '../docs/13_summary_fig.html')
+rmarkdown::render('code/07_abundance_diversity_summary.Rmd', output_file = '../docs/07_abundance_diversity_summary.html')
 ```

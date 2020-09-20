@@ -1,0 +1,52 @@
+---
+title: "old_spatial_metrics"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Vegetation Condition Classes (VCC)
+
+```{r}
+
+# Map of VCC in the northern burn area
+
+plot.new()
+plot(vcc_raster)
+
+```
+
+```{r eval=FALSE}
+
+# Create data frame with a row for each pixel in each expanded site
+
+vcc_pixels <- data.frame(site = character(), # blank data frame
+                         vcc = numeric())
+
+for (i in unique(grid_corners_df$site)) {
+  df <- extract(vcc_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel info
+    mutate(site = i) %>% 
+    dplyr::rename(vcc = hdr) %>% 
+    select(site, vcc)
+  vcc_pixels <- rbind(vcc_pixels, df) # add pixel information to df, one row per pixel
+}
+
+vcc_summary <- vcc_pixels %>% 
+  full_join(site_meta[3:4]) %>% 
+  mutate(vcc = round(vcc,0)) %>% 
+  group_by(site, severity) %>% 
+  count(vcc)%>% 
+  filter(n/sum(n) > 0.1) %>% # remove pixels that make up <10% of the habitat 
+  mutate(vcc = case_when(
+    vcc == 3 ~ 'Vegetation Condition Class II.A Moderate to Low, Vegetation Departure 34-50% Vegetation Condition Class II Moderate Vegetation Departure',
+    vcc == 4 ~ 'Vegetation Condition Class II.B Moderate to High, Vegetation Departure 51-66% Vegetation Condition Class II Moderate Vegetation Departure'
+  ))
+
+```
+
+<br>
+
+

@@ -1,7 +1,10 @@
 ---
-title: "Small Mammal Diversity"
+title: "Small Mammal Richness and Evenness"
 author: "Kate Culhane"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -20,7 +23,6 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 library(tidyverse)
 library(vegan)
-library(VennDiagram)
 library(iNEXT)
 library(dunn.test)
 library(rstatix)
@@ -71,9 +73,9 @@ xlabs <- c('Unburned', 'Moderate Severity', 'High Severity')
 
 ```
 
-### Species Richness
+## Species Richness
 
-#### Number of species
+### Number of species
 
 **Number of species per site, by fire severity:**
 
@@ -98,83 +100,20 @@ ggplot(n_spp, aes(x = severity, y = n)) +
 
 ```
 
-<br>
-
-**Venn diagram of the number of species found in each fire severity:** 
-
-```{r species Venn diagram, fig.width=2, fig.height=2, echo=FALSE, eval=FALSE}
-
-# Vectors of species at each severity
-
-df <- gather(matrix_pooled_df, key = species, value = n, 2:12) %>% 
-  filter(n != 0)
-
-unb <- filter(df, severity == 'unb')
-mod <- filter(df, severity == 'mod')
-high <- filter(df, severity == 'high')
-
-all_spp <- list(unb$species, mod$species, high$species)
-names(all_spp) <- c('Unburned', 'Low-Moderate', 'High')
-
-# VennDiagram
-spp_venn <- venn.diagram(all_spp,
-                         filename = NULL,
-                         lty = 'blank',
-                         cex = 1,
-                         fontfamily = 'sans',
-                         cat.pos = c(-18, 18, 180),
-                         cat.dist = c(0.07, 0.07, 0.05),
-                         cat.cex = 0.9,
-                         cat.fontfamily = 'sans',
-                         fill = c('darkgreen', 'orange', 'red'))
-plot.new()
-grid.draw(spp_venn)
-
-```
-
 - Nine species were found at unburned sites, eight at low-moderate severity sites, and seven at high severity sites
 - Shared species: *P. maniculatus*, *N. quadrimaculatus*, *O. beecheyi*, *P. boylii*
 - Species unique to unburned sites: *G. sabrinus*, *R. megalotis*
 
 <br>
 
-#### Individual-based rarefaction
+### Individual-based rarefaction
 
-Sites pooled by severity
+```{r}
 
-```{r rarefaction curves, fig.height=4}
-
-# Rarefaction curves
-
+# Rarefaction
 accum_unb <- specaccum(matrix_unb, method = 'rarefaction', permutations = 1000)
 accum_mod <- specaccum(matrix_mod, method = 'rarefaction', permutations = 1000)
 accum_high <- specaccum(matrix_high, method = 'rarefaction', permutations = 1000)
-
-# Plot curves
-
-plot(accum_unb,
-     ci = 2, # 95% confidence interval
-     ci.type = 'polygon', ci.lty = 0,
-     ci.col = rgb(red=0, green=1, blue=0, alpha=0.25),
-     lwd = 2, col = 'darkgreen')
-lines(accum_mod,
-      ci = 2, # 95% confidence interval
-      ci.type = 'polygon',
-      ci.col = rgb(red=1, green=0.5, blue=0, alpha=0.25), ci.lty = 0,
-      lwd = 2, col = 'orange')
-lines(accum_high,
-      ci = 2, # 95% confidence interval
-      ci.type = 'polygon', ci.lty = 0,
-      ci.col = rgb(red=1, green=0, blue=0, alpha=0.25),
-      lwd = 2, col = 'red')
-
-```
-
-<br>
-
-#### Individual-based rarefaction, scaled to individuals
-
-```{r}
 
 # ggplot using individual-based rarefaction
 
@@ -222,25 +161,10 @@ ggplot() +
 
 ```
 
-```{r legend, eval=FALSE}
-
-# Stuff for legend
-
-x <- data.frame(letter = c('a','a','b','b','c','c'),
-                value = c(1,1,2,2,3,3))
-
-ggplot(x, aes(x = value, y = value, color = letter)) +
-  geom_line(size = 1.3) +
-  geom_ribbon(aes(ymin = value+0.5, ymax = value-0.5, fill = letter), color = NA, alpha = 0.2) +
-  scale_color_manual(values = c('darkgreen', 'orange', 'red')) +
-  scale_fill_manual(values = c('darkgreen', 'orange', 'red')) +
-  theme(legend.key.size = unit(1, 'cm'))
-
-```
+- Sites pooled by severity
+- Scaled to individuals
 
 <br>
-
-#### Individual-based rarefaction with unconstrained 95% confidence intervals
 
 ```{r, fig.width=7}
 
@@ -278,72 +202,21 @@ ggplot(df, aes(x = x, y = y, color = site)) +
   theme(legend.title = element_blank()) +
   theme_classic()
 
-ggsave('figs/fig4.png', plot = last_plot(),
+ggsave('figs/supp1.png', plot = last_plot(),
        width = 6, height = 3, units = 'in')
 
 ```
 
-<br>
-
-#### Sample-based rarefaction
-
-**Using random method (site-based):**
-
-```{r species accumulation curves}
-
-# Using random method (site-based)
-
-accum_unb <- specaccum(matrix_unb, method = 'random', permutations = 1000,
-                       w = effort$effort[1:9])
-unb_data <- data.frame(site = accum_unb$sites,
-                       effort = accum_unb$effort,
-                       richness = accum_unb$richness,
-                       SD = accum_unb$sd)
-
-accum_mod <- specaccum(matrix_mod, method = 'random', permutations = 1000,
-                       w = effort$effort[9:18])
-mod_data <- data.frame(site = accum_mod$sites,
-                       effort = accum_mod$effort,
-                       richness = accum_mod$richness,
-                       SD = accum_mod$sd)
-
-accum_high <- specaccum(matrix_high, method = 'random', permutations = 1000,
-                        w = effort$effort[19:27])
-high_data <- data.frame(site = accum_high$sites,
-                        effort = accum_high$effort,
-                        richness = accum_high$richness,
-                        SD = accum_high$sd)
-
-# Plot the species accumulation curves:
-
-ggplot() +
-  geom_line(data = unb_data,
-            aes(x = effort, y = richness),
-            size = 1, color = 'darkgreen') +
-  geom_ribbon(data = unb_data,
-              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
-              alpha = 0.2, fill = 'darkgreen') +
-  geom_line(data = mod_data,
-            aes(x = effort, y = richness),
-            size = 1, color = 'orange') +  
-  geom_ribbon(data = mod_data,
-              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
-              alpha = 0.2, fill = 'orange') +
-  geom_line(data = high_data,
-            aes(x = effort, y = richness),
-            size = 1, color = 'red') +
-  geom_ribbon(data = high_data,
-              aes(x = effort, ymin = (richness-2*SD), ymax=(richness+2*SD)),
-              alpha = 0.2, fill = 'red') +
-  labs(x = 'Trapping Effort',
-       y = 'Richness') +
-  theme_classic()
-
-```
+- **Supplementary Figure 1**
+- Sites pooled by severity
+- Scaled to individuals
+- Unconstrained 95% confidence intervals
 
 <br>
 
-#### Per-site richness (individual-based rarefaction estimates)
+### Per-site richness
+
+(individual-based rarefaction estimates)
 
 ```{r rarefaction, include=FALSE}
 
@@ -385,24 +258,6 @@ plot(lm,1)
 richness %>% levene_test(rarefied_richness~severity)
 # Variance is fine
 
-# ANOVA
-aov <- aov(rarefied_richness~severity, data=richness)
-summary(aov)
-# p=0.00357
-cohens_f(aov)
-# effsize=0.77, n=27 (large)
-richness %>% ungroup() %>% 
-  tukey_hsd(rarefied_richness~severity)
-# unb/mod p=0.357, unb/high p=0.00273, mod/high p=0.0332
-
-# Kruskal-Wallis
-kruskal_test(richness, rarefied_richness~severity)
-# p=0.0131
-kruskal_effsize(richness, rarefied_richness~severity)
-# effsize=0.278, n=27 (large)
-dunn_test(richness, rarefied_richness~severity)
-# unb/mod p=0.223, unb/high p=0.0102, mod/high p=0.0872
-
 ```
 
 ```{r Rarefied Richness boxplot}
@@ -418,14 +273,19 @@ ggplot(richness, aes(x = severity, y = rarefied_richness)) +
   theme(legend.position = 'NA') +
   scale_x_discrete(labels = xlabs)
 
+# Stats
+aov <- aov(rarefied_richness~severity, data=richness)
+summary(aov)
+richness %>% ungroup() %>% tukey_hsd(rarefied_richness~severity)
+cohens_f(aov)
+
 ```
 
-- Differences in mean richness calculated from un-pooled rarefaction were significant (one-way ANOVA (2, 24) = 7.1, p < 0.01, n = 9 for each).
-- No way to account for sampling effort (uses raw species matrix with counts)
+- Significantly different by ANOVA
 
 <br>
 
-### Pielou's Evenness (J)
+## Pielou's Evenness (J)
 
 ```{r}
 
@@ -483,29 +343,23 @@ plot(lm,1)
 diversity %>% levene_test(J~severity)
 # Variance is fine
 
-#ANOVA
+```
+
+```{r}
+
+# Stats
 aov <- aov(J~severity, data=diversity)
 summary(aov)
-# p=0.0445
+diversity %>% ungroup() %>% tukey_hsd(J~severity)
 cohens_f(aov)
-# effsize=0.60, n=27 (large)
-diversity %>% ungroup() %>% 
-  tukey_hsd(J~severity)
-# unb/mod p=0.309, unb/high p=0.0375, mod/high p=0.362
-
-# Kruskal-Wallis
-kruskal_test(diversity, J~severity)
-# p=0.068
-kruskal_effsize(diversity, J~severity)
-# effsize=0.141, n=27 (large)
-dunn_test(diversity, J~severity)
-# unb/mod p=0.313, unb/high p=0.0614, mod/high p=0.285
 
 ```
 
+- Significantly different by ANOVA
+
 <br>
 
-### Shannon Diversity (H)
+## Shannon Diversity (H)
 
 ```{r calculate H}
 
@@ -565,19 +419,21 @@ plot(lm,1)
 diversity %>% levene_test(H~severity)
 # Variance is fine
 
-#ANOVA
+```
+
+```{r}
+
+# Stats
+
 aov <- aov(H~severity, data=diversity)
 summary(aov)
-diversity %>% ungroup() %>% 
-  tukey_hsd(H~severity)
+diversity %>% ungroup() %>% tukey_hsd(H~severity)
 cohens_f(aov)
 
 ```
 
-- Diversity differed significantly between the three fire severity treatments (one-way ANOVA (2, 24) = 6.2, p < 0.01, n = 9 for each). Post-hoc analysis by Tukey’s HSD showed that mean diversity in unburned sites (H = 0.87) and high severity sites (H = 0.32) was significantly different (pairwise p = 0.005). 
-
-<br>
+- Significantly different by ANOVA
 
 ```{r eval=FALSE}
-rmarkdown::render('code/04_diversity_and_richness.Rmd', output_file = '../docs/04_diversity_and_richness.html')
+rmarkdown::render('code/06_diversity.Rmd', output_file = '../docs/06_diversity.html')
 ```

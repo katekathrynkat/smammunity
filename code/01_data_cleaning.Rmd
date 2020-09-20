@@ -814,7 +814,5 @@ print(sum(final$species=="SPRU" | final$species=="MISS")) ###478 non-captures
 - Some of the PEMA have suspiciously long tails, but I decided to trust the original IDs since there's no way to check.
 
 ```{r}
-
 rmarkdown::render('code/01_data_cleaning.Rmd', output_file = '../docs/01_data_cleaning.html')
-
 ```
