@@ -6,6 +6,9 @@ editor_options:
   chunk_output_type: console
 ---
 
+## THINGS TO FIX:
+delete species matrix adj by trapping effort? don't think we ended up using it????
+
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(include=FALSE)
@@ -29,7 +32,7 @@ CSVs created for use in analyses:
 
 <br>
 
-***Note:*** These data sets INCLUDE rare species (species with five or less total captures) unless the alternative code is ran (this code is usually commented out). Rare species are:
+***Note:*** These data sets INCLUDE rare species (species with five or less total captures). See 11_rare_species_excluded.Rmd for analyses excluding these species. Rare species are:
 
 - dusky-footed woodrat (NEFU)
 - yellow pine chipmunk (NEAM)
@@ -47,18 +50,6 @@ library(kableExtra)
 # Load data
 
 smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') # cleaned mammal data
-
-# TO EXLUDE RARE SPECIES: Use this code instead of the previous line to run all analyses with rare species (<=5 captures each) removed
-
-# smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>%
-#   mutate(species = case_when(
-#     species=='NEFU' ~ 'SPRU',
-#     species=='NEAM' ~ 'SPRU',
-#     species=='GLSA' ~ 'SPRU',
-#     species=='PETR' ~ 'SPRU',
-#     species=='REME' ~ 'SPRU',
-#     TRUE ~ species
-#   ))
 
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% # site metadata
     mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))

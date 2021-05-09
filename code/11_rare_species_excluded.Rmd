@@ -1,0 +1,757 @@
+---
+title: "Analyses excluding rare species"
+author: "Kate Culhane"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width=5, fig.height=3)
+```
+
+<br>
+
+Major analyses, excluding rare species (less than 5 individuals captured):
+
+- dusky-footed woodrat (NEFU)
+- yellow pine chipmunk (NEAM)
+- northern flying squirrel (GLSA)
+- pinyon mouse (PETR)
+- western harvest mouse (REME)
+
+<br>
+
+## Data wrangling
+
+```{r packages and data}
+
+# Load packages
+
+library(tidyverse)
+library(kableExtra)
+
+# Load data
+
+smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>% # cleaned mammal data
+  mutate(species = case_when( 
+    species=='NEFU' ~ 'SPRU', # remove rare species and code as sprung traps
+    species=='NEAM' ~ 'SPRU',
+    species=='GLSA' ~ 'SPRU',
+    species=='PETR' ~ 'SPRU',
+    species=='REME' ~ 'SPRU',
+    TRUE ~ species
+  ))
+
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% # site metadata
+    mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+
+traits <- read_csv('raw_data/lit_data/mammal_traits.csv') # mammal trait data
+
+```
+
+```{r}
+
+# Create full smamm data frame with site and species information
+captures <- full_join(smamms_clean, site_meta) %>%
+  left_join(traits) %>% 
+  select(site, severity, date, day, trap, indID, species, binomial, binomial_short, common_name, family, age, recap, weight, comments)
+
+# Create data frame with one row per unique individual
+smamms <- captures %>% 
+  filter(species != 'MISS' & species != 'SPRU') %>% # remove SPRU and MISS
+  group_by(indID) %>% 
+  arrange(-day) %>% 
+  filter(row_number()==1) %>% # filter by unique animals (only keep record from last capture)
+  ungroup() %>% 
+  select(-day)
+
+# Data frame of trapping effort at each site
+effort <- captures %>% 
+  filter(species == 'SPRU' | species == 'MISS') %>%
+  mutate(usage = case_when(
+    species == 'SPRU' ~ 0.5, # sprung traps coded as 0.5 usage
+    species == 'MISS' ~ 1 # missing traps coded as 1 usage (to be subtracted)
+  )) %>% 
+  group_by(site, severity) %>% 
+  summarize(sprung = sum(usage)) %>% 
+  mutate(effort =300 - sprung) %>% 
+  select(site, severity, effort) %>% 
+  arrange(severity)
+
+# Species matrix for use in vegan
+matrix <- smamms %>% 
+  group_by(site, severity, species) %>% 
+  tally() %>% # count individuals per species per site
+  spread(species, n) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) %>% # replace NAs with 0
+  arrange(severity)
+
+# Species matrix adjusted for trapping effort
+matrix_adj <- smamms %>% 
+  group_by(site, severity, species) %>% 
+  tally() %>% # count individuals per species per site
+  full_join(effort, by = c('site', 'severity')) %>% 
+  mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
+  select(site, species, n_adj)%>% 
+  spread(species, n_adj) %>% # re-format into matrix
+  ungroup() %>% 
+  replace(., is.na(.), 0) %>% # replace NAs with 0
+  arrange(severity)
+
+```
+
+**Site by species matrix**
+
+```{r, include=TRUE, echo=FALSE}
+
+kable(matrix) %>% 
+  kable_styling(bootstrap_options = c('striped', 'condensed'),
+                full_width = FALSE,
+                position = 'left')
+
+```
+
+<br>
+
+## Abundance
+
+```{r packages and data}
+
+# Load packages
+library(rstatix)
+library(dunn.test)
+library(effectsize)
+filter <- dplyr::filter
+
+# Load data
+smamms # output_data/unique_smamms.csv
+captures # output_data/smamms.csv
+effort # output_data/effort.csv
+mass <- read_csv('output_data/species_mass.csv')
+site_meta # raw_data/field_data/site_metadata.csv
+
+# Vectors for ggplot
+cols <- c('#4AB793', '#DCA827', '#D85F2B')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
+```
+
+```{r}
+
+# Calculate total abundance summed across all species at each site (raw and adjusted)
+abundance <- smamms %>% 
+  group_by(site, severity) %>% 
+  tally() %>% # count individuals per site
+  full_join(effort) %>% 
+  mutate(n_adj = n/effort*300) %>% # add column adjusted for effort
+  ungroup() %>% 
+  full_join(site_meta[2:4]) %>% 
+  mutate(offset=effort/300)
+
+```
+
+### Total abundance
+
+```{r}
+
+# Jitterplot + boxplot
+ggplot(abundance, aes(x = severity, y = n_adj)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
+  scale_color_manual(values = cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  geom_boxplot(outlier.shape=NA, fill=NA) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal abundance') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r}
+
+kruskal.test(n_adj~severity, data=abundance)
+kruskal_effsize(n_adj~severity, data=abundance)
+
+```
+
+<br>
+
+### Biomass
+
+```{r}
+
+biomass <- left_join(smamms[,1:8], mass) %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass = sum(spp_avg)) %>% # biomass per site
+  full_join(effort) %>% 
+  mutate(bm_adj = biomass/effort*300) %>% # add column adjusted for effort
+  ungroup()
+
+# Jitterplot with mean/SE
+ggplot(biomass, aes(x = severity, y = bm_adj)) +
+  geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
+  scale_color_manual(values = cols) +
+  scale_shape_manual(values=c(19,17,15)) +
+  stat_summary(fun.data = mean_se, geom = 'errorbar', width = 0.2, size = 0.7) +
+  stat_summary(fun = 'mean', size = 2, geom = 'point') +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Total small mammal biomass') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+```
+
+```{r}
+
+kruskal.test(bm_adj~severity, data=biomass)
+kruskal_effsize(bm_adj~severity, data=biomass)
+
+```
+
+## Diversity
+
+```{r packages and data}
+
+# Load packages
+library(vegan)
+
+# Load data
+matrix_df <- matrix # output_data/species_matrix.csv
+matrix_adj_df <- matrix_adj # output_data/species_matrix_adj.csv
+effort # output_data/effort.csv
+
+```
+
+```{r data wrangling}
+
+# Transform data frames into matrices
+
+matrix <- as.matrix(matrix_df[-c(1,2)])
+rownames(matrix) <- matrix_df$site
+
+matrix_adj <- as.matrix(matrix_adj_df[-c(1,2)])
+rownames(matrix_adj) <- matrix_adj_df$site
+
+# Create separate species matrices for each treatment
+
+matrix_unb <- matrix[1:9,] # species matrix for low severity
+matrix_mod <- matrix[10:18,] # species matrix for med severity
+matrix_high <- matrix[19:27,] # species matrix for high severity
+
+# Create matrix with species pooled for each treatment
+
+matrix_pooled_df <- matrix_df %>% 
+  group_by(severity) %>% 
+  summarize_if(is.numeric, sum)
+
+matrix_pooled <- as.matrix(matrix_pooled_df[-1])
+rownames(matrix_pooled) <- matrix_pooled_df$severity
+
+# Vectors for boxplots
+
+cols <- c('darkgreen', 'orange', 'red')
+xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
+
+```
+
+
+### Per-site richness
+
+(individual-based rarefaction estimates)
+
+```{r rarefaction, include=FALSE}
+
+# Calculate richness for each site using rarefaction
+raremax <- min(rowSums(matrix))
+raremax # minimum sample count = 5: rarefy using this value
+rarefied_richness <- rarefy(matrix, sample = raremax)
+
+# Make a dataframe with site, severity, and richness
+richness <- tibble(site = matrix_df$site, severity = matrix_df$severity, rarefied_richness)
+
+```
+
+```{r Rarefied Richness boxplot}
+
+# Jitterplot with mean/SE
+ggplot(richness, aes(x = severity, y = rarefied_richness)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Rarefied Richness') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+# Stats
+aov <- aov(rarefied_richness~severity, data=richness)
+summary(aov)
+richness %>% ungroup() %>% tukey_hsd(rarefied_richness~severity)
+cohens_f(aov)
+
+```
+
+<br>
+
+### Pielou's Evenness (J)
+
+```{r}
+
+# Calculate Pielou's Evenness
+
+J <- diversity(matrix_adj)/log(specnumber(matrix_adj)) # H / log (number of species)
+
+diversity <- cbind(richness, J)
+diversity$J[is.nan(diversity$J)] <- NA
+
+```
+
+**Pielou's Evenness (J) decreased across the fire severity gradient:**
+
+```{r J boxplot}
+
+# Jitterplot with mean/SE
+ggplot(diversity, aes(x = severity, y = J)) +
+  geom_jitter(aes(color = severity)) +
+  scale_color_manual(values = cols) +
+  stat_summary(fun.data = mean_se, geom = "crossbar", width = .5) +
+  theme_classic() +
+  labs(x = 'Fire Severity',
+       y = 'Pielou\'s Evenness (J)') +
+  theme(legend.position = 'NA') +
+  scale_x_discrete(labels = xlabs)
+
+# Stats
+aov <- aov(J~severity, data=diversity)
+summary(aov)
+diversity %>% ungroup() %>% tukey_hsd(J~severity)
+cohens_f(aov)
+
+```
+
+<br>
+
+## NMDS
+
+
+```{r packages and data}
+
+# Load packages
+library(goeveg)
+library(pairwiseAdonis)
+library(ggvegan)
+library(ggrepel)
+
+# Load data
+matrix_df #output_data/species_matrix.csv
+matrix_adj_df # output_data/species_matrix_adj.csv
+site_meta # raw_data/field_data/site_metadata.csv')
+veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
+  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
+smamm_meta <- read_csv('raw_data/lit_data/mammal_traits.csv')
+
+```
+
+```{r data wrangling}
+
+# Transform matrices
+matrix_hell <- decostand(matrix, 'hellinger')
+matrix_sqrt <- sqrt(matrix)
+
+# Severity data frame
+sevs <- select(matrix_df, site, severity)
+
+```
+
+```{r include=FALSE}
+
+# NMDS with relative abundance data (2 dimensions)
+set.seed(17)
+ord <- metaMDS(matrix_adj,
+               distance = 'bray',
+               autotransform = FALSE,
+               k = 2,
+               try=50)
+ord$stress # 0.09
+
+```
+
+```{r, fig.height=4, results='hide',fig.keep='all', fig.show="hold", out.width="50%"}
+
+# Stress plot
+stressplot(ord)
+
+# Scree plot to check stress per number of dimensions
+dimcheckMDS(matrix_hell, distance = "bray", autotransform = FALSE, k = 10, trymax = 20)
+
+```
+
+```{r}
+
+cols <- c('darkgreen', 'orange', 'red')
+par(mar = c(4,4,1,1))
+plot(ord, display = 'species', type = 'n')
+points(ord, display = 'sites',
+       cex = 1.5, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity,
+            label = TRUE, col = cols, lwd = 2)
+text(ord, display = 'species',
+     cex = 0.6)
+
+```
+
+<br>
+
+### Adonis
+
+```{r}
+
+# Attach severity data to species matrix
+matrix_hell
+attach(sevs)
+
+# Compare community similarity across fire severities using adonis
+smamm_ado <- adonis(matrix_hell ~ severity,
+                    permuatations = 999,
+                    method = 'bray')
+smamm_ado
+
+# Pairwise Adonis
+smamm_ado_pw <- pairwise.adonis(matrix_hell, severity,
+                                sim.method = 'bray',
+                                p.adjust.m = 'bonferroni')
+smamm_ado_pw
+
+```
+
+<br>
+
+### Habitat drivers
+
+```{r include=FALSE}
+
+# Data frame with only the variables from the model
+model_vars <- veg_metrics %>% 
+  select(site, severity,
+         litter_cover, live_tree_density, soft_cwd_volume,
+         shrub_cover, forb_grass_cover, pca_score)
+
+# Fit environmental variables
+fit <- envfit(ord, model_vars[,3:8], permutations = 1000)
+
+# NMDS plot with arrows for environmental variables
+par(mar = c(4,4,1,1))
+plot(ord, diplay = 'sites', type = 'n')
+points(ord, display = 'sites',
+       cex = 1, pch = 19, col = cols[sevs$severity])
+ordiellipse(ord, groups = sevs$severity, # ellipse with std error around centroids
+            label = FALSE, col = cols, lwd = 2)
+plot(fit,
+     col = 'black', lwd = 3, cex = 0.8)
+text(ord, display = 'species',
+     cex = 0.7, col = 'grey30')
+
+```
+
+<br>
+
+## mvGLM
+
+```{r packages and data, include=FALSE}
+
+# Load packages
+library(mvabund)
+library(qpcR) # for calculating AIC weights
+select <- dplyr::select
+mutate <- dplyr::mutate
+
+# Load data
+matrix_df # output_data/species_matrix.csv
+veg_metrics # output_data/veg_metrics.csv
+site_centroids <- read_csv('output_data/site_centroids.csv')
+effort2 <- effort %>% # output_data/effort.csv
+  mutate(offset = effort/300)
+
+```
+
+```{r include=FALSE}
+
+# Principle Components of Neighborhood Matrix (PCNM)
+
+site_pcnm <- pcnm(dist(site_centroids[,2:3]))
+
+pcnm_vectors <- as.data.frame(site_pcnm$vectors) %>% 
+  cbind(site_centroids$sites_aea.site)%>% 
+  rename(site = 'site_centroids$sites_aea.site',
+         pcnm_1 = PCNM1) %>% 
+  select(site, pcnm_1)
+
+# All predictor variables
+
+vars <- veg_metrics %>% 
+  full_join(pcnm_vectors) %>% 
+  select(-tree_survival)
+
+```
+
+```{r include=FALSE}
+
+# Create mvabund object using species matrix
+dat <- full_join(matrix_df, vars)
+spp <- mvabund(dat[,3:8])
+
+```
+
+```{r include=FALSE, eval=FALSE}
+
+# Compare relationship between means and variances
+meanvar.plot(spp) # looks like a linear increase...
+# need to use appropriate GLM that assumes a similar mean-variance relationship --> negative binomial
+
+plot(data=dat, spp~severity)
+
+```
+
+<br>
+
+### GLM~severity~
+
+```{r echo=TRUE}
+
+glm <- manyglm(data=dat, spp ~ severity + pcnm_1,
+               family='negative_binomial', # to account for mean-variance relationship
+               offset = effort2$offset) # offset accounts for trapping effort
+
+plot(glm) # check for model fit
+
+an <- anova(glm,
+            test='score', # allows for small means due to rare species
+            cor.type='shrink', # accounts for correlation between variables
+            nBoot=999) # number of bootstrap iterations
+an$table
+
+```
+
+<br>
+
+### Indicator species
+
+```{r echo=TRUE}
+
+an2 <- anova(glm, test='score', cor.type='shrink', nBoot=999, p.uni='adjusted')
+an2
+
+```
+
+
+<br>
+
+### GLM~veg~
+
+```{r echo=TRUE}
+
+glm2 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume + forb_grass_cover + pcnm_1,
+               family='negative_binomial', # to account for mean-variance relationship
+               offset=effort2$offset)# offset accounts for trapping effort
+
+plot(glm2) # check for model fit
+
+sum <- summary(glm2,
+               test='score', # allows for small means due to rare species
+               cor.type='shrink', # accounts for correlation between variables
+               nBoot=999) # number of bootstrap iterations
+sum
+
+```
+
+<br>
+
+### AIC selection
+
+```{r echo=FALSE}
+
+# Create data frame with all possible variable combinations
+veg <- c('soft_cwd_volume', 'forb_grass_cover', 'pca_score', 'pcnm_1')
+cbind.fill <- function(...){
+    nm <- list(...) 
+    nm <- lapply(nm, as.matrix)
+    n <- max(sapply(nm, nrow)) 
+    do.call(cbind, lapply(nm, function (x) 
+        rbind(x, matrix(,n-nrow(x),ncol(x))))) 
+}
+var_combos <- data.frame(cbind.fill(combn(veg,1), combn(veg,2), combn(veg,3), combn(veg,4)))
+
+# Calculate AIC for each combination
+model_aic <- data_frame(vars=character(),
+                        K=numeric(),
+                        aic=numeric())
+for (i in 1:ncol(var_combos)) {
+  vars <- levels(var_combos[,i])
+  vars_dat <- as.matrix(select(dat,vars))
+  K <- length(vars)
+  aic <- manyglm(spp~vars_dat, family='negative_binomial', offset=effort2$offset)$AICsum
+  new_combo <- data_frame(vars=c(paste(vars,collapse=" + ")),
+                          K=K,
+                          aic=aic)
+  model_aic <- rbind(model_aic, new_combo)
+}
+aic_arrange <- model_aic %>% 
+  arrange(aic)
+
+weights <- akaike.weights(aic_arrange$aic)
+
+model_selection <- cbind(aic_arrange,
+                         delta_aic=weights$deltaAIC,
+                         weight=weights$weights) %>% 
+  mutate(aic=round(aic,2),
+         delta_aic=round(delta_aic,2),
+         weight=round(weight,2))
+
+head(model_selection, 6)
+```
+
+Only difference is that PCNM is now added to the model.
+
+**Final model**
+
+Vegetation variables included:
+
+- PC1~TSL
+- Soft CWD
+
+```{r echo=TRUE}
+
+glm3 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume,
+               family='negative_binomial', # accounts for mean-variance relationship
+               offset=effort2$offset) # accounts for trapping effort
+
+plot(glm3) # check for model fit
+
+sum <- summary(glm3,
+               test='score', # allows for small means due to rare species
+               cor.type='shrink', # accounts for correlation between variables
+               nBoot=999) # number of bootstrap iterations
+sum
+
+```
+
+### GLM~trait~
+
+```{r include=FALSE}
+
+# Data wrangling
+trait_new <- read.csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
+  arrange(species)
+dat2 <- as.data.frame(dat)
+L_dat <- dat2[c(3:8)] %>% 
+  mutate_each(funs(if(is.numeric(.)) as.integer(.) else .))
+rownames(L_dat) <- dat$site
+R_dat <- dat2[c(2,14:15)]
+rownames(R_dat) <- dat$site
+trait_new2 <- trait_new %>% 
+  filter(species != 'GLSA', species != 'NEFU', species != 'NEAM',
+         species != 'PETR', species != 'REME')
+traits <- trait_new2[c(3:6)]
+rownames(traits) <- trait_new2$species
+
+```
+
+#### manyGLM method
+
+```{r echo=TRUE}
+
+fc_glm <- traitglm(L_dat, R_dat[-1], traits[-1],
+                   composition=TRUE, # relative abundance
+                   method='manyglm',
+                   family='negative.binomial') # accounts for mean-variance relationship
+
+plot(fc_glm) # check for model fit
+
+fc_anova <- anova(fc_glm)
+fc_anova
+
+```
+
+<br>
+
+#### LASSO penalty method
+
+```{r echo=TRUE}
+
+fc <- traitglm(L_dat, R_dat[-1], traits[-1],
+               composition=TRUE, # relative abundance
+               method='glm1path', # LASSO penalty
+               family='negative.binomial') # accounts for mean-variance relationship
+
+plot(fc) # check model fit
+
+```
+
+```{r echo=FALSE, fig.height=4, fig.width=3}
+
+fourth <- as_tibble(cbind(trait=rownames(fc$fourth),fc$fourth)) %>% 
+  pivot_longer(cols=2:3,
+               names_to='veg') %>% 
+  separate(trait, sep=5, into=c('group','trait')) %>% 
+  mutate(
+    value=as.numeric(value),
+    vegetation=case_when(
+      veg=='pca_score'~'PC1[T+S+L]',
+      veg=='soft_cwd_volume'~'Soft CWD'
+    ),
+    vegetation=factor(vegetation, levels=c('PC1[T+S+L]', 'Soft CWD')),
+    group=case_when(
+      group=='nests'~'Nesting habit',
+      group=='guild'~'Feeding guild',
+      group=='forag'~'Foraging mode'
+    ),
+    group=factor(group,levels=c('Feeding guild','Foraging mode','Nesting habit')),
+    trait=factor(trait, levels=c('Insectivore','Omnivore','Herbivore',
+                                 'Ground','Scansorial','Arboreal',
+                                 'Burrow','Hollow','Tree'))
+    )
+
+fourth %>% 
+  ggplot(aes(x=vegetation, y=trait, fill=value)) +
+  geom_tile() +
+  scale_fill_gradient2(low='darkred', high='darkblue', limits=c(-0.4,0.4)) +
+  scale_x_discrete(labels=parse(text=c('PC1[T+S+L]','Soft~CWD'))) +
+  facet_grid(rows=vars(group), scales='free_y', space='free', switch='y') +
+  theme_minimal() +
+  theme(panel.border = element_rect(fill=NA),
+        panel.spacing = unit(0,'cm'),
+        axis.text.x = element_text(angle=35, vjust=1.3, hjust=1.2,
+                                   face='bold', color='black'),
+        axis.ticks = element_line(),
+        strip.placement = 'outside',
+        strip.background.y = element_rect(fill=NA),
+        strip.text = element_text(face='bold'),
+        legend.key.height = unit(0.5,'in'),
+        axis.title = element_text(size=10),
+        legend.key.width = unit(0.1,'in'),
+        legend.title = element_blank(),
+        legend.box.spacing = unit(0.05,'in'),
+        panel.grid = element_blank()) +
+  labs(x='Vegetation variable', y='Small mammal trait')
+
+ggsave('figs/fig6.png', plot = last_plot(),
+       width = 2.5, height = 3.7, units = 'in')
+
+```
+
+
+
+
+```{r, eval=FALSE}
+rmarkdown::render('code/11_rare_species_excluded.Rmd', output_file = '../docs/11_rare_species_excluded.html')
+```

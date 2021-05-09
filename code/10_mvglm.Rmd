@@ -99,6 +99,7 @@ plot(data=dat, spp~severity)
 ```{r echo=TRUE}
 
 glm <- manyglm(data=dat, spp ~ severity + pcnm_1,
+               composition=FALSE, # the anova function (used next) cannot currently incorporate relative abundance
                family='negative_binomial', # to account for mean-variance relationship
                offset = effort$offset) # offset accounts for trapping effort
 
@@ -212,7 +213,7 @@ head(model_selection, 6)
 
 Vegetation variables included:
 
-- PC1~TSL
+- PC1~TSL~
 - Soft CWD
 
 ```{r echo=TRUE}

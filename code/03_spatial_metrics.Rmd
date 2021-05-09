@@ -205,7 +205,7 @@ for (i in unique(grid_corners_df$site)) {
 # r = sqrt(40000/pi) = 112.8379 m
 # d = 2r = 225.6758 m
 
-# Create polygons of each grid + buffer of 112.8379m
+# Create polygons of each grid + buffer
 
 buffsites_list <- list() # empty list to fill with buffered polys
 
