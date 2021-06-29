@@ -8,7 +8,7 @@ editor_options:
 
 ```{r setup,include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(eval = FALSE, include = FALSE)
+knitr::opts_chunk$set(eval = TRUE, include = FALSE)
 ```
 
 <br>
@@ -76,7 +76,7 @@ dat <- read_csv('raw_data/field_data/smamms_raw.csv',
 
 ```{r reformat data}
 
-# Change variable classes
+# Update variable classes
 
 dat$date <- as.Date(dat$date, format="%d-%b-%y") # change date to date format
 dat$left.tag <- as.numeric(dat$left.tag) # change left tag to numeric
@@ -152,7 +152,7 @@ dat1 <- dat # data frame for 1st round of QA/QC
 
 # Update trap day
 
-dat1[dat1$day==1.5,"day"] <- 1 # one animal missed during morning checks so session coded as 1.5, change to 1
+dat1[dat1$day=="1.5","day"] <- "1" # one animal missed during morning checks so session coded as 1.5, change to 1
 dat1 <- dat1[dat1$day==0 | dat1$day==1 | dat1$day==2 | dat1$day==3,] # only include sessions 0-3 (no practice = P1, P2)
 
 # Change non-capture species IDs based on comments
@@ -782,7 +782,7 @@ final <- dat2 %>%
 
 #### Export clean data ####
 
-write_csv(final, 'raw_data/field_data/smamms_clean.csv', col_names = TRUE)
+write_csv(final, 'output_data/01_smamms_clean.csv', col_names = TRUE)
 
 ```
 
@@ -811,6 +811,6 @@ print(sum(final$species=="SPRU" | final$species=="MISS")) ###478 non-captures
 - Tag numbers left in left.tag and right.tag columns have not been updated; indID represents the correct ID.
 - Some of the PEMA have suspiciously long tails, but I decided to trust the original IDs since there's no way to check.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 rmarkdown::render('code/01_data_cleaning.Rmd', output_file = '../docs/01_data_cleaning.html')
 ```

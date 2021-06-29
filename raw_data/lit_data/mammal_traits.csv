@@ -1,12 +1,12 @@
-species,binomial,binomial_short,family,common_name,seeds,fruits,veg,fungi,inverts,verts,guild,activity,arboreal,fossorial
-GLSA,Glaucomys sabrinus,G. sabrinus,Sciuridae,Northern flying squirrel,10,0,20,60,5,5,herbivore,nocturnal,2,0
-NEAM,Neotamias amoenus,N. amoenus,Sciuridae,Yellow-pine chipmunk,65,5,5,10,10,5,herbivore,diurnal,2,2
-NEQU,Neotamias quadrimaculatus,N. quadrimaculatus,Sciuridae,Long-eared chipmunk,15,5,15,60,5,0,herbivore,diurnal,1,2
-NESE,Neotamias senex,N. senex,Sciuridae,Shadow chipmunk,10,0,5,80,5,0,herbivore,diurnal,0,1
-NEFU,Neotoma fuscipes,N. fuscipes,Cricetidae,Dusky-footed woodrat,5,5,85,5,0,0,herbivore,nocturnal,2,0
-OTBE,Otospermophilus beecheyi,O. beecheyi,Cricetidae,California ground squirrel,30,10,40,0,10,10,omnivore,diurnal,0,2
-PEBO,Peromyscus boylii,P. boylii,Cricetidae,Brush mouse,40,25,0,5,25,5,omnivore,nocturnal,2,0
-PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,Deer mouse,40,25,0,10,25,0,omnivore,nocturnal,2,0
-PETR,Peromyscus truei,P. truei,Cricetidae,Pinyon mouse,50,30,5,5,10,0,herbivore,nocturnal,1,0
-REME,Reithrodontomys megalotis,R. megalotis,Cricetidae,Western harvest mouse,80,0,5,0,15,0,herbivore,nocturnal,1,0
-SOTR,Sorex trowbridgii,S. trowbridgii,Soricidae,Trowbridge's shrew,10,0,0,5,85,0,insectivore,cathemeral,0,2
+species,binomial,binomial_short,family,common_name,mass,guild,nests,forag
+GLSA,Glaucomys sabrinus,G. sabrinus,Sciuridae,Northern flying squirrel,119,Omnivore,Tree,Arboreal
+NEAM,Neotamias amoenus,N. amoenus,Sciuridae,Yellow-pine chipmunk,48.625,Omnivore,Burrow,Scansorial
+NEQU,Neotamias quadrimaculatus,N. quadrimaculatus,Sciuridae,Long-eared chipmunk,81.44872,Omnivore,Tree,Scansorial
+NESE,Neotamias senex,N. senex,Sciuridae,Shadow chipmunk,68.12963,Omnivore,Tree,Ground
+NEFU,Neotoma fuscipes,N. fuscipes,Cricetidae,Dusky-footed woodrat,189.11111,Herbivore,Tree,Arboreal
+OTBE,Otospermophilus beecheyi,O. beecheyi,Cricetidae,California ground squirrel,546.13333,Omnivore,Burrow,Ground
+PEBO,Peromyscus boylii,P. boylii,Cricetidae,Brush mouse,18.83333,Omnivore,Hollow,Scansorial
+PEMA,Peromyscus maniculatus,P. maniculatus,Cricetidae,Deer mouse,17.4512,Omnivore,Hollow,Scansorial
+PETR,Peromyscus truei,P. truei,Cricetidae,Pinyon mouse,20.5,Herbivore,Hollow,Scansorial
+REME,Reithrodontomys megalotis,R. megalotis,Cricetidae,Western harvest mouse,20,Herbivore,Hollow,Scansorial
+SOTR,Sorex trowbridgii,S. trowbridgii,Soricidae,Trowbridge's shrew,4.84375,Insectivore,Burrow,Ground

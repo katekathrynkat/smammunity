@@ -15,21 +15,20 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 ```{r packages & data}
 
-# Load packages
-
-library(tidyverse)
-library(ggnewscale)
-library(scales)
-library(ggthemes)
+# Packages
+library(ggnewscale) # use multiple scales for the same geom type within one figure
+library(scales) # 
+library(ggthemes) # 
 library(cowplot) # plot_grid function
+library(tidyverse)
 
-# Load data
+# Small mammal abundance and biomass data
+abundance <- read_csv('output_data/05_abundance.csv')
 
-abundance <- read_csv('output_data/abundance.csv')
-diversity <- read_csv('output_data/diversity.csv')
-FD <- read_csv('output_data/FD_biomass.csv')
-PD <- read_csv('output_data/PD.csv')
-
+# Small mammal richness and evenness data
+diversity <- read_csv('output_data/06_diversity.csv')
+ 
+# Vectors for plotting
 colors <- c('#4AB793', '#DCA827', '#D85F2B')
 sevs <- c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')
 
@@ -38,34 +37,31 @@ sevs <- c('Unburned', 'Low-mod.\nseverity', 'High\nseverity')
 ```{r}
 
 # Combined data frame
-metrics <- full_join(abundance, FD) %>% 
-  full_join(diversity) %>% 
-  full_join(PD) %>% 
+metrics <- full_join(abundance, diversity) %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')),
-         biomass = biomass_total/1000) %>% 
-    select(site, severity,
-           n_adj, biomass, n_adj_pema, n_adj_sotr,
-           rarefied_richness, J, FEve, PD)
+         biomass_kg = biomass/1000) %>% # convert from g to kg
+  select(site, severity,
+         n_adj, biomass_kg,
+         n_adj_pema, n_adj_sotr,
+         rarefied_richness, J)
 
 # Summary data frame 
 summary <- metrics%>% 
-  gather(key = 'metric', value = 'value', 3:10) %>% 
+  gather(key = 'metric', value = 'value', 3:8) %>% 
   group_by(metric, severity) %>% 
   summarize(mean = mean(value, na.rm = TRUE),
             se = sd(value, na.rm = TRUE)/sqrt(length(value))) %>% 
   ungroup() %>% 
-  mutate(metric = factor(metric, levels = c('n_adj', 'biomass',
+  mutate(metric = factor(metric, levels = c('n_adj', 'biomass_kg',
                                             'n_adj_pema', 'n_adj_sotr',
-                                            'rarefied_richness', 'J',
-                                            'FEve', 'PD')))
+                                            'rarefied_richness', 'J')))
 
 # Vectors
 metric_labs <- c('Total abundance\n(indv/site)', 'Biomass\n(kg/site)',
               'Deer mouse\nabundance (indv/site)', 'Trowbridge\'s shrew\nabundance (indv/site)',
-              'Rarefied\nrichness', 'Evenness',
-              'FEve', 'Faith\'s PD')
-names(metric_labs) <- c('n_adj', 'biomass', 'n_adj_pema', 'n_adj_sotr',
-                        'rarefied_richness', 'J', 'FEve', 'PD')
+              'Rarefied\nrichness', 'Evenness')
+names(metric_labs) <- c('n_adj', 'biomass_kg', 'n_adj_pema', 'n_adj_sotr',
+                        'rarefied_richness', 'J')
 
 ```
 
@@ -90,8 +86,8 @@ abun_plot <- metrics %>%
 set.seed(5)
 biomass_plot <- metrics %>% 
   ggplot() +
-  geom_jitter(aes(x=severity, y=biomass, color=severity, shape=severity), width=0.1, size=1.5) +
-  geom_boxplot(aes(x=severity, y=biomass), fill=NA, outlier.shape=NA) +
+  geom_jitter(aes(x=severity, y=biomass_kg, color=severity, shape=severity), width=0.1, size=1.5) +
+  geom_boxplot(aes(x=severity, y=biomass_kg), fill=NA, outlier.shape=NA) +
   scale_color_manual(values=colors) +
   scale_shape_manual(values=c(19,17,15)) +
   theme_classic() +
@@ -165,11 +161,9 @@ plot_grid(abun_plot, biomass_plot, pema_plot, sotr_plot, rich_plot, even_plot,
           ncol = 2, align = 'v',
           rel_heights = c(1, 1, 1.2))
 
-ggsave('figs/fig3.png', plot = last_plot(),
+ggsave('figs/07_fig4.png', plot = last_plot(),
        width = 5, height = 6, units = 'in')
 ```
-
-- **Figure 3**
 
 ```{r eval=FALSE}
 rmarkdown::render('code/07_abundance_diversity_summary.Rmd', output_file = '../docs/07_abundance_diversity_summary.html')

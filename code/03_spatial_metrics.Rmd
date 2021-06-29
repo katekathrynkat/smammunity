@@ -36,46 +36,38 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
   
 ```{r include=FALSE}
 
-# Load packages
-
+# Packages
 library(raster) # for raster work
-library(rgdal) # for vector work (includes 'sp')
-library(sf)
-library(ggspatial)
-library(mapview)
-library(spatialEco) # for several landscape metrics
-library(geosphere)
+library(rgdal) # for vector work (includes package 'sp')
 library(rgeos) # gDistance function
 library(tidyverse)
 
-# Load data
+# Functions
+extract <- raster::extract
 
+# Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-# Load spatial data
-
+# Site coordinates
 sites_dat <- read_csv('raw_data/spatial_data/site_coords.csv')
 
 # MTBS data
-
-mtbs_info <- GDALinfo('raw_data/spatial_data/ca3878212060420140913_20130730_20150805_dnbr6.tif') # metadata
-mtbs_raster <- raster('raw_data/spatial_data/ca3878212060420140913_20130730_20150805_dnbr6.tif') # burn severity
-bndy_shp <- readOGR(dsn = 'raw_data/spatial_data',
+mtbs_info <- GDALinfo('raw_data/spatial_data/MTBS/ca3878212060420140913_20130730_20150805_dnbr6.tif') # metadata
+mtbs_raster <- raster('raw_data/spatial_data/MTBS/ca3878212060420140913_20130730_20150805_dnbr6.tif') # burn severity
+bndy_shp <- readOGR(dsn = 'raw_data/spatial_data/MTBS',
                     layer = 'ca3878212060420140913_20130730_20150805_burn_bndy') # burn boundary
 
-# LANDFIRE data
-
-# EVT (Existing Vegetation Type)
-evt_landfire_2012 <- raster("raw_data/spatial_data/evt_2012/hdr.adf")
+# LANDFIRE data: EVT (Existing Vegetation Type)
+evt_landfire_2012 <- raster("raw_data/spatial_data/LANDFIRE/evt_2012/hdr.adf")
 evt_2012 <- projectRaster(evt_landfire_2012, crs=crs(mtbs_raster))
-evt_landfire_2014 <- raster("raw_data/spatial_data/evt_2014/hdr.adf")
+evt_landfire_2014 <- raster("raw_data/spatial_data/LANDFIRE/evt_2014/hdr.adf")
 evt_2014 <- projectRaster(evt_landfire_2014, crs=crs(mtbs_raster))
 
-# EVC (Existing Vegetation Cover)
-evc_landfire_2012 <- raster("raw_data/spatial_data/evc_2012/hdr.adf")
+# LANDFIRE data: EVC (Existing Vegetation Cover)
+evc_landfire_2012 <- raster("raw_data/spatial_data/LANDFIRE/evc_2012/hdr.adf")
 evc_2012 <- projectRaster(evc_landfire_2012, crs=crs(mtbs_raster))
-evc_landfire_2014 <- raster("raw_data/spatial_data/evc_2014/hdr.adf")
+evc_landfire_2014 <- raster("raw_data/spatial_data/LANDFIRE/evc_2014/hdr.adf")
 evc_2014 <- projectRaster(evc_landfire_2014, crs=crs(mtbs_raster))
 
 ```
@@ -126,7 +118,7 @@ y <- coordinates(sites_aea)[,2]
 
 site_centroids <- data.frame(sites_aea$site, x, y)
 
-write_csv(site_centroids,'output_data/site_centroids.csv', col_names = TRUE)
+write_csv(site_centroids,'output_data/03_site_centroids.csv', col_names = TRUE)
 
 ```
 
@@ -199,6 +191,7 @@ for (i in unique(grid_corners_df$site)) {
   grids_list[[i]] <- poly3 # add each SpatialPolygons object to a list
 }
 
+# Calculating a buffer:
 # Largest homerange (GLSA) = 0.04 km^2 = 40000 m^2
 # Area of a circle = pi * r^2
 # 40000 = pi * r^2
@@ -238,12 +231,12 @@ Spatial metrics calculated to justify fire severity categories:
 
 - **Average severity:** average MTBS pixel value within buffered site boundaries
 
-```{r avg severity within expanded sites, eval=FALSE}
+```{r avg severity within expanded sites, include=FALSE}
 
 # Create data frame with a row for each pixel in each expanded site
 
 buffsite_pixels <- data.frame(site = character(), # blank data frame
-                           severity = numeric())
+                              severity = numeric())
 
 for (i in unique(grid_corners_df$site)) {
   df <- extract(mtbs_raster, buffsites_list[[i]], df = TRUE) %>% # extract pixel information within each buffered site polygon
@@ -271,7 +264,7 @@ buffsite_sev_avg <- buffsite_pixels %>%
 
 - **Distance to burn boundary:** distance from each site centroid to the nearest burn boundary (m)
 
-```{r calculate distance to burn boundary, eval=FALSE}
+```{r calculate distance to burn boundary, include=FALSE}
 
 # Calculate distance to burn boundary
 
@@ -289,7 +282,7 @@ distance_to_edge <- data.frame(sites_aea$site, distances) %>%
 
 ```
 
-```{r eval=FALSE}
+```{r include=FALSE}
 
 # Export data
 
@@ -298,11 +291,11 @@ spatial_metrics <- full_join(buffsite_sev_avg, distance_to_edge) %>%
   rename(avg_pixel = avg,
          dist_to_edge = distance)
 
-write_csv(spatial_metrics, 'output_data/spatial_metrics.csv', col_names = TRUE)
+write_csv(spatial_metrics, 'output_data/03_spatial_metrics.csv', col_names = TRUE)
 
 ```
 
-```{r distance between sites, eval=FALSE}
+```{r distance between sites, include=FALSE}
 
 # PAIRWISE DISTANCE BETWEEN SITES
 
@@ -333,7 +326,7 @@ plot(evt_2014, main='EVT 2014', axes=FALSE, legend=FALSE)
 
 ```
 
-```{r eval=FALSE}
+```{r include=FALSE}
 
 # EVT 2012
 evt_2012_pixels <- data.frame(site = character(), evt = numeric())
@@ -349,7 +342,7 @@ evt_2012_summary <- evt_2012_pixels %>%
   mutate(evt = round(evt,0)) %>% 
   group_by(site, severity) %>% 
   count(evt)
-write_csv(evt_2012_summary, 'output_data/EVT_2012.csv', col_names = TRUE)
+write_csv(evt_2012_summary, 'output_data/03_EVT_2012.csv', col_names = TRUE)
 
 # EVT 2014
 evt_2014_pixels <- data.frame(site = character(), evt = numeric())
@@ -365,7 +358,7 @@ evt_2014_summary <- evt_2014_pixels %>%
   mutate(evt = round(evt,0)) %>% 
   group_by(site, severity) %>% 
   count(evt)
-write_csv(evt_2014_summary, 'output_data/EVT_2014.csv', col_names = TRUE)
+write_csv(evt_2014_summary, 'output_data/03_EVT_2014.csv', col_names = TRUE)
 
 ```
 
@@ -385,7 +378,7 @@ plot(evc_2014, main='EVC 2014', axes=FALSE, legend=FALSE)
 
 ```
 
-```{r eval=FALSE}
+```{r include=FALSE}
 
 # EVC 2012
 evc_2012_pixels <- data.frame(site = character(), evc = numeric())
@@ -401,8 +394,8 @@ evc_2012_summary <- evc_2012_pixels %>%
   mutate(evc = round(evc,0)) %>% 
   group_by(site, severity) %>% 
   count(evc)
-write_csv(evc_2012_summary, 'output_data/EVC_2012.csv', col_names = TRUE)
-write_csv(evc_2012_pixels, 'output_data/EVC_2012_pixels.csv', col_names = TRUE)
+write_csv(evc_2012_summary, 'output_data/03_EVC_2012.csv', col_names = TRUE)
+write_csv(evc_2012_pixels, 'output_data/03_EVC_2012_pixels.csv', col_names = TRUE)
 
 # EVC 2014
 evc_2014_pixels <- data.frame(site = character(), evc = numeric())
@@ -418,8 +411,8 @@ evc_2014_summary <- evc_2014_pixels %>%
   mutate(evc = round(evc,0)) %>% 
   group_by(site, severity) %>% 
   count(evc)
-write_csv(evc_2014_summary, 'output_data/EVC_2014.csv', col_names = TRUE)
-write_csv(evc_2014_pixels, 'output_data/EVC_2014_pixels.csv', col_names = TRUE)
+write_csv(evc_2014_summary, 'output_data/03_EVC_2014.csv', col_names = TRUE)
+write_csv(evc_2014_pixels, 'output_data/03_EVC_2014_pixels.csv', col_names = TRUE)
 
 ```
 

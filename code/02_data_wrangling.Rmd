@@ -15,15 +15,17 @@ knitr::opts_chunk$set(include=FALSE)
 
 ### Pre-analysis manipulation of datasets
 
-CSVs created for use in analyses:
+CSVs created for use in analyses (in folder "output_data"):
 
-- *output_data/smamms.csv*: All small mammal capture data joined with site and species information
+- *02_smamms.csv*: All small mammal capture data joined with site and species information
 
-- *output_data/unique_smamms.csv*: Condensed small mammal capture data with one row per unique individual and no empty trap data
+- *02_unique_smamms.csv*: Condensed small mammal capture data with one row per unique individual and no empty trap data
 
-- *output_data/effort.csv*: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)
+- *02_effort.csv*: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)
 
-- *output_data/species_matrix.csv*: Species matrix for use in vegan
+- *02_species_matrix.csv*: Species matrix for use in vegan
+
+- *02_species_matrix_adj.csv*: Species matrix for use in vegan, adjusted for trapping effort
 
 <br>
 
@@ -42,7 +44,7 @@ library(kableExtra) # making pretty tables
 library(tidyverse)
 
 # Small mammal capture data
-smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv')
+smamms_clean <- read_csv('output_data/01_smamms_clean.csv')
 
 # Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>%
@@ -61,7 +63,7 @@ smamms <- full_join(smamms_clean, site_meta) %>%
   left_join(traits) %>% 
   select(site, severity, date, day, trap, indID, species, binomial, binomial_short, common_name, family, age, recap, weight, comments)
 
-write_csv(smamms, 'output_data/smamms.csv', col_names = TRUE)
+write_csv(smamms, 'output_data/02_smamms.csv', col_names = TRUE)
 
 ```
 
@@ -77,7 +79,7 @@ unique_smamms <- smamms %>%
   ungroup() %>% 
   select(-day)
     
-write_csv(unique_smamms, 'output_data/unique_smamms.csv', col_names = TRUE)
+write_csv(unique_smamms, 'output_data/02_unique_smamms.csv', col_names = TRUE)
 
 ```
 
@@ -97,7 +99,7 @@ effort <- smamms %>%
   select(site, severity, effort) %>% 
   arrange(severity)
 
-write_csv(effort, 'output_data/effort.csv', col_names = TRUE)
+write_csv(effort, 'output_data/02_effort.csv', col_names = TRUE)
 
 ```
 
@@ -113,24 +115,22 @@ matrix <- unique_smamms %>%
   replace(., is.na(.), 0) %>% # replace NAs with 0
   arrange(severity)
 
-write_csv(matrix, 'output_data/species_matrix.csv')
-
-### NOT USED IN ANALYSES
+write_csv(matrix, 'output_data/02_species_matrix.csv')
 
 # Species matrix adjusted for trapping effort
 
-# matrix_adj <- unique_smamms %>% 
-#   group_by(site, severity, species) %>% 
-#   tally() %>% # count individuals per species per site
-#   full_join(effort, by = c('site', 'severity')) %>% 
-#   mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
-#   select(site, species, n_adj)%>% 
-#   spread(species, n_adj) %>% # re-format into matrix
-#   ungroup() %>% 
-#   replace(., is.na(.), 0) %>% # replace NAs with 0
-#   arrange(severity)
-# 
-# write_csv(matrix_adj, 'output_data/species_matrix_adj.csv')
+matrix_adj <- unique_smamms %>%
+  group_by(site, severity, species) %>%
+  tally() %>% # count individuals per species per site
+  full_join(effort, by = c('site', 'severity')) %>%
+  mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
+  select(site, species, n_adj)%>%
+  spread(species, n_adj) %>% # re-format into matrix
+  ungroup() %>%
+  replace(., is.na(.), 0) %>% # replace NAs with 0
+  arrange(severity)
+
+write_csv(matrix_adj, 'output_data/02_species_matrix_adj.csv')
 
 ```
 

@@ -380,16 +380,16 @@ summary {
 <p><br></p>
 <div id="pre-analysis-manipulation-of-datasets" class="section level3">
 <h3>Pre-analysis manipulation of datasets</h3>
-<p>CSVs created for use in analyses:</p>
+<p>CSVs created for use in analyses (in folder “output_data”):</p>
 <ul>
-<li><p><em>output_data/smamms.csv</em>: All small mammal capture data joined with site and species information</p></li>
-<li><p><em>output_data/unique_smamms.csv</em>: Condensed small mammal capture data with one row per unique individual and no empty trap data</p></li>
-<li><p><em>output_data/effort.csv</em>: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)</p></li>
-<li><p><em>output_data/species_matrix.csv</em>: Species matrix for use in vegan</p></li>
-<li><p><em>output_data/species_matrix_adj.csv</em>: Species matrix for use in vegan, adjusted for trapping effort</p></li>
+<li><p><em>02_smamms.csv</em>: All small mammal capture data joined with site and species information</p></li>
+<li><p><em>02_unique_smamms.csv</em>: Condensed small mammal capture data with one row per unique individual and no empty trap data</p></li>
+<li><p><em>02_effort.csv</em>: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)</p></li>
+<li><p><em>02_species_matrix.csv</em>: Species matrix for use in vegan</p></li>
+<li><p><em>02_species_matrix_adj.csv</em>: Species matrix for use in vegan, adjusted for trapping effort</p></li>
 </ul>
 <p><br></p>
-<p><strong><em>Note:</em></strong> These data sets INCLUDE rare species (species with five or less total captures) unless the alternative code is ran (this code is usually commented out). Rare species are:</p>
+<p><strong><em>Note:</em></strong> These data sets INCLUDE rare species (species with five or less total captures). See 11_rare_species_excluded.Rmd for analyses excluding these species. Rare species are:</p>
 <ul>
 <li>dusky-footed woodrat (NEFU)</li>
 <li>yellow pine chipmunk (NEAM)</li>
@@ -760,7 +760,7 @@ unb
 0
 </td>
 <td style="text-align:right;">
-9
+10
 </td>
 <td style="text-align:right;">
 0

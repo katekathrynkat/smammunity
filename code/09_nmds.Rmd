@@ -19,29 +19,28 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load packages
-library(vegan)
-library(goeveg)
-library(pairwiseAdonis)
-library(ggvegan)
-library(ggrepel)
+# Packages
+library(vegan) # community analyses
+library(goeveg) # 
+library(pairwiseAdonis) # post hoc test for adonis
+library(ggvegan) # pretty ordination plot
+library(ggrepel) # pretty ordination plot
 library(tidyverse)
 
-# Load data
-
-matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
+# Small mammal site by species matrix
+matrix_df <- read_csv('output_data/02_species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-matrix_adj_df <- read_csv('output_data/species_matrix_adj.csv') %>% 
-  mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-
+# Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
+# Vegetation variables
+veg_metrics <- read_csv('output_data/08_veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-smamm_meta <- read_csv('raw_data/lit_data/mammal_traits.csv')
+# Small mammal traits (and common names)
+traits <- read_csv('raw_data/lit_data/mammal_traits.csv')
 
 ```
 
@@ -52,12 +51,9 @@ smamm_meta <- read_csv('raw_data/lit_data/mammal_traits.csv')
 matrix <- as.matrix(matrix_df[-c(1,2)])
 rownames(matrix) <- matrix_df$site
 
-matrix_adj <- as.matrix(matrix_adj_df[-c(1,2)])
-rownames(matrix_adj) <- matrix_adj_df$site
+matrix_hell <- decostand(matrix, 'hellinger') # Hellinger transformation
 
-matrix_hell <- decostand(matrix, 'hellinger')
-
-matrix_sqrt <- sqrt(matrix)
+matrix_sqrt <- sqrt(matrix) # Square-root transformation
 
 # Severity data frame
 sevs <- select(matrix_df, site, severity)
@@ -323,7 +319,7 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/fig4b.png', plot=last_plot(),
+ggsave('figs/09_fig4b.png', plot=last_plot(),
        width=4, height=3, units='in')
 
 ```
@@ -333,7 +329,7 @@ ggsave('figs/fig4b.png', plot=last_plot(),
 # Species labels
 
 spp_points2 <- spp_points %>% 
-  full_join(smamm_meta[c(1,5)], by = c('Label'='species')) %>% 
+  full_join(traits[c(1,5)], by = c('Label'='species')) %>% 
   mutate(xdat=NMDS1,
          ydat=NMDS2)
 
@@ -349,7 +345,7 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/fig4b-y.png', plot=last_plot(),
+ggsave('figs/09_fig4b-y.png', plot=last_plot(),
        width=4, height=3, units='in')
 
 ggplot() +
@@ -364,95 +360,8 @@ ggplot() +
         legend.position='none') +
   coord_fixed(clip='off')
 
-ggsave('figs/fig4b-x.png', plot=last_plot(),
+ggsave('figs/09_fig4b-x.png', plot=last_plot(),
        width=4, height=3, units='in')
-
-```
-
-<br>
-
-## Traits
-
-```{r include=FALSE}
-
-# Data frame with mammal traits
-traits <- read_csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
-  arrange(species)
-
-# Fit traits
-trait_fit <- envfit(ord, traits[,c(4:6)], permutations = 1000, display = 'sp')
-
-# NMDS plot with arrows for traits
-par(mar = c(4,4,1,1))
-plot(ord, diplay = 'sites', type = 'n')
-points(ord, display = 'sites',
-       cex = 1, pch = 19, col = cols[sevs$severity])
-ordiellipse(ord, groups = sevs$severity, # ellipse with std error around centroids
-            label = FALSE, col = cols, lwd = 2)
-plot(trait_fit,
-     col = 'black', lwd = 3, cex = 0.8)
-text(ord, display = 'species',
-     cex = 0.7, col = 'grey30')
-
-vectors2 <- fortify(trait_fit) %>% 
-  mutate(xend=NMDS1,
-         yend=NMDS2,
-         lab = case_when(
-           Label == 'nestsBurrow' ~ 'Burrow',
-           Label == 'nestsHollow' ~ 'Hollow',
-           Label == 'nestsTree' ~ 'Tree',
-           Label == 'guildInsectivore' ~ 'Insectivore',
-           Label == 'guildOmnivore'~ 'Omnivore',
-           Label == 'guildHerbivore' ~ 'Herbivore',
-           Label == 'foragArboreal' ~ 'Arboreal',
-           Label == 'foragGround' ~ 'Ground',
-           Label == 'foragScansorial' ~ 'Scansorial'
-         ))
-
-vectors3 <- vectors %>% 
-  mutate(
-    xlab = case_when(
-      Label=='soft_cwd_volume'~xlab+0.22,
-      Label=='pca_score'~xlab,
-      TRUE~xlab
-    ),
-    ylab = case_when(
-      Label=='soft_cwd_volume'~ylab,
-      Label=='pca_score'~ylab,
-      TRUE~ylab
-    )
-  )
-
-```
-
-```{r}
-
-# Plot
-
-ggplot() +
-  geom_path(data=df_ell, aes(x=NMDS1, y=NMDS2, color=group),
-            size=0.6) +
-  geom_segment(data=vectors2, aes(x=0, y=0, xend=NMDS1, yend=NMDS2),
-               arrow=arrow(length=unit(0.02, 'npc'), type='closed'), size=0.6) +
-  geom_text(data=vectors2, aes(x=NMDS1, y=NMDS2, label=lab),
-            size=4) +
-  geom_segment(data=vectors3[c(3,6),], aes(x=0, y=0, xend=xend, yend=yend,),
-               arrow=arrow(length=unit(0.02, 'npc'), type='closed'),
-               size=0.6, linetype=5) +
-  geom_text(data=vectors3[c(3,6),], aes(x=xlab, y=ylab, label=lab),
-            size=4, fontface='bold') +
-  geom_label(data=site_points, aes(x=0.82, y=-0.7,
-                                   label='NMDS in 3 dim\n2 dim displayed\nstress = 0.09'),
-             size=4) +
-  scale_color_manual(values=c('#4AB793', '#DCA827', '#D85F2B')) +
-  scale_shape_manual(values=c(19,17,15)) +
-  scale_x_continuous(limits=c(-1.6,1.15)) +
-  scale_y_continuous(limits=c(-0.9,0.71)) +
-  theme_classic() +
-  theme(panel.border=element_rect(fill=NA),
-        axis.text.x=element_blank(), axis.text.y=element_blank(),
-        legend.position='none') +
-  coord_fixed(clip='off')
 
 ```
 

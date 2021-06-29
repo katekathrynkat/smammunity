@@ -26,19 +26,23 @@ library(qpcR) # for calculating AIC weights
 library(tidyverse)
 
 # Small mammal abundance data (site by species matrix)
-matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
+matrix_df <- read_csv('output_data/02_species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
 # Small mammal trapping effort
-effort <- read_csv('output_data/effort.csv') %>% 
+effort <- read_csv('output_data/02_effort.csv') %>% 
   mutate(offset = effort/300) # calculate offset to use in model
 
 # Vegetation variables
-veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
+veg_metrics <- read_csv('output_data/08_veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
 # Site coordinates
-site_centroids <- read_csv('output_data/site_centroids.csv')
+site_centroids <- read_csv('output_data/03_site_centroids.csv')
+
+# Small mammal traits
+traits <- read_csv('raw_data/lit_data/mammal_traits.csv') %>% 
+  arrange(species)
 
 ```
 
@@ -266,16 +270,15 @@ Fourth-corner analysis (trait by environment interactions)
 ```{r include=FALSE}
 
 # Data wrangling
-trait_new <- read.csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
-  arrange(species)
 dat2 <- as.data.frame(dat)
-L_dat <- dat2[c(3:13)] %>% 
+traits2 <- as.data.frame(traits)
+L_dat <- dat2[c(3:13)] %>% # abundance
   mutate_each(funs(if(is.numeric(.)) as.integer(.) else .))
 rownames(L_dat) <- dat$site
-R_dat <- dat2[c(2,19:20)]
+R_dat <- dat2[c(2,19:20)] # environment
 rownames(R_dat) <- dat$site
-traits <- trait_new[c(3:6)]
-rownames(traits) <- trait_new$species
+Q_dat <- traits2[c(6:9)] # traits
+rownames(Q_dat) <- traits$species
 
 ```
 
@@ -289,7 +292,7 @@ rownames(traits) <- trait_new$species
 
 ```{r echo=TRUE}
 
-glm_trait <- traitglm(L_dat, R_dat[-1], traits[-1],
+glm_trait <- traitglm(L_dat, R_dat[-1], Q_dat[-1],
                       composition=TRUE, # relative abundance
                       method='manyglm',
                       family='negative.binomial') # accounts for mean-variance relationship
@@ -327,7 +330,8 @@ an_trait$table
 
 ```{r echo=TRUE}
 
-glm_fc <- traitglm(L_dat, R_dat[-1], traits[-1],
+# Model
+glm_fc <- traitglm(L_dat, R_dat[-1], Q_dat[-1],
                    composition=TRUE, # relative abundance
                    method='glm1path', # LASSO penalty
                    family='negative.binomial') # accounts for mean-variance relationship
@@ -396,7 +400,7 @@ fourth %>%
         panel.grid = element_blank()) +
   labs(x='Vegetation variable', y='Small mammal trait')
 
-ggsave('figs/fig6.png', plot = last_plot(),
+ggsave('figs/10_fig6.png', plot = last_plot(),
        width = 2.5, height = 3.7, units = 'in')
 
 ```

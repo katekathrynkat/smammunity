@@ -9,10 +9,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-## THINGS TO FIX
-
-where does species_mass.csv come from?!?!?!?!
-
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
@@ -23,33 +19,32 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load packages
-library(rstatix)
-library(ggpubr)
-library(dunn.test)
-library(effectsize)
-library(kableExtra)
-library(calecopal)
+# Packages
+library(rstatix) # KW test, KW effect size
+library(ggpubr) # 
+library(dunn.test) # Dunn's test (KW post hoc)
+library(effectsize) # 
+library(kableExtra) # making pretty tables
+library(calecopal) # color palettes
 library(tidyverse)
 
-# Load data
-
-smamms <- read_csv('output_data/unique_smamms.csv') %>% 
+# Small mammal unique individuals
+smamms <- read_csv('output_data/02_unique_smamms.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-captures <- read_csv('output_data/smamms.csv') %>% 
+# Small mammal capture data
+captures <- read_csv('output_data/02_smamms.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-effort <- read_csv('output_data/effort.csv') %>% 
+# Small mammal trapping effort
+effort <- read_csv('output_data/02_effort.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-mass <- read_csv('output_data/species_mass.csv')
-
+# Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-# Vectors for ggplot
-
+# Vectors for plotting
 cols <- c('#4AB793', '#DCA827', '#D85F2B')
 xlabs <- c('Unburned', 'Moderate Severity', 'High Severity') 
 
@@ -239,7 +234,7 @@ ggplot(prop_species2, aes(x = label, y = prop, fill = severity)) +
         legend.position = 'none',
         axis.title.x = element_text(hjust = 3.8, size = 13))
 
-ggsave('figs/fig4a.png', plot = last_plot(),
+ggsave('figs/05_fig4a.png', plot = last_plot(),
        width = 4, height = 3, units = 'in')
 
 ```
@@ -322,15 +317,40 @@ kruskal_effsize(n_adj~severity, data=abundance)
 
 ```{r}
 
-biomass <- full_join(smamms[,1:8], mass) %>% 
-  group_by(site, severity) %>% 
-  summarize(biomass = sum(spp_avg)) %>% # biomass per site
-  full_join(effort) %>% 
-  mutate(bm_adj = biomass/effort*300) %>% # add column adjusted for effort
+# Average mass for each unique individual
+capture_mass <- captures %>% 
+  select(site, severity, indID, binomial, weight, age) %>% 
+  filter(!is.na(indID), # filter for captures only
+         (age == 'A' | binomial == 'Neotamias amoenus')) %>% # filter for only adult animals (all NEAM were subadults, unfortunately)
+  group_by(indID, site, severity, binomial) %>% 
+  summarize(avg_mass = mean(weight, na.rm = TRUE)) %>% 
   ungroup()
 
+# Average mass for each species
+species_mass <- capture_mass %>% 
+  group_by(binomial) %>% 
+  summarize(spp_avg = mean(avg_mass, na.rm = TRUE))
+
+# Average mass for each unique individual, with NAs filled in with species averages
+capture_biomass <- full_join(capture_mass, species_mass, by = 'binomial') %>% 
+  mutate(mass = case_when(
+    !is.na(avg_mass) ~ avg_mass,
+    is.na(avg_mass) ~ spp_avg
+  )) %>% 
+  select(site, severity, binomial, mass)
+
+# Total biomass at each site
+biomass <- capture_biomass %>% 
+  group_by(site, severity) %>% 
+  summarize(biomass = sum(mass)) %>% 
+  ungroup()
+
+```
+
+```{r}
+
 # Jitterplot with mean/SE
-ggplot(biomass, aes(x = severity, y = bm_adj)) +
+ggplot(biomass, aes(x = severity, y = biomass)) +
   geom_jitter(aes(color = severity, shape = severity), width = 0.2, size = 2) +
   scale_color_manual(values = cols) +
   scale_shape_manual(values=c(19,17,15)) +
@@ -351,37 +371,37 @@ ggplot(biomass, aes(x = severity, y = bm_adj)) +
 # Summary table
 biomass %>% 
   group_by(severity) %>% 
-  get_summary_stats(bm_adj)
+  get_summary_stats(biomass)
 
 # Check for outliers
 biomass %>% group_by(severity) %>% 
-  identify_outliers(bm_adj)
-# 3 outliers (MIXMOR, HIBADR, HICAMP)
+  identify_outliers(biomass)
+# 2 outliers (MIXMOR, HICAMP)
 
 # Check for normality
-lm <- lm(bm_adj~severity, data=biomass)
+lm <- lm(biomass~severity, data=biomass)
 ggqqplot(residuals(lm))
-ggqqplot(biomass, "bm_adj", facet.by="severity")
+ggqqplot(biomass, "biomass", facet.by="severity")
 shapiro_test(residuals(lm))
 # The outliers make the data not normal
 
 # Homogoneity of variance
 plot(lm,1)
-biomass %>% levene_test(bm_adj~severity)
+biomass %>% levene_test(biomass~severity)
 # Variance is fine
 
 #Kruskal-Wallis
-kruskal_test(bm_adj~severity, data=biomass)
-# p=0.484
-kruskal_effsize(bm_adj~severity, data=biomass)
-# effsize=0.0228, n=27 (small)
+kruskal.test(biomass~severity, data=biomass)
+# p=0.3446
+kruskal_effsize(biomass~severity, data=biomass)
+# effsize=0.00544, n=27 (small)
 
 ```
 
 ```{r}
 
-kruskal.test(bm_adj~severity, data=biomass)
-kruskal_effsize(bm_adj~severity, data=biomass)
+kruskal.test(biomass~severity, data=biomass)
+kruskal_effsize(biomass~severity, data=biomass)
 
 ```
 
@@ -607,14 +627,19 @@ kruskal_effsize(n_adj_sotr~severity, data=sotr)
 - Jitter plot points represent SOTR abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
 - Significant by K-W (p < 0.001, large eff size)
 
-```{r eval=FALSE}
+```{r include=FALSE}
 
 # Export abundance data
 
-abundance_dat <- full_join(abundance, pema) %>% 
-  full_join(sotr)
+abundance_dat <- full_join(abundance, pema, by = c('site', 'severity')) %>% 
+  full_join(sotr, by = c('site', 'severity')) %>% 
+  full_join(biomass, by = c('site', 'severity')) %>% 
+  select(site, severity, n, n_adj,
+         n_pema, n_adj_pema,
+         n_sotr, n_adj_sotr,
+         biomass)
 
-write_csv(abundance_dat, 'output_data/abundance.csv', col_names = TRUE)
+write_csv(abundance_dat, 'output_data/05_abundance.csv', col_names = TRUE)
 
 ```
 

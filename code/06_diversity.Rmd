@@ -19,25 +19,25 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages and data}
 
-# Load packages
-
+# Packages
+library(vegan) # community analyses
+library(iNEXT) # rarefaction curves
+library(dunn.test) # Dunn's test (KW post hoc)
+library(rstatix) # 
+library(ggpubr) # 
+library(effectsize) # 
 library(tidyverse)
-library(vegan)
-library(iNEXT)
-library(dunn.test)
-library(rstatix)
-library(ggpubr)
-library(effectsize)
 
-# Load data
-
-matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
+# Small mammal site by species matrix
+matrix_df <- read_csv('output_data/02_species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-matrix_adj_df <- read_csv('output_data/species_matrix_adj.csv') %>% 
+# Small mammal site by species matrix adjusted for trapping effort
+matrix_adj_df <- read_csv('output_data/02_species_matrix_adj.csv') %>%
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-effort <- read_csv('output_data/effort.csv')
+# Small mammal trapping effort
+effort <- read_csv('output_data/02_effort.csv')
 
 ```
 
@@ -208,7 +208,7 @@ ggplot(df, aes(x = x, y = y, color = site)) +
   theme(legend.title = element_blank()) +
   theme_classic()
 
-ggsave('figs/supp1.png', plot = last_plot(),
+ggsave('figs/06_figS1.png', plot = last_plot(),
        width = 6, height = 3, units = 'in')
 
 ```
@@ -388,7 +388,7 @@ diversity <- cbind(diversity, H)
 
 # Export all diversity data
 
-write_csv(diversity, 'output_data/diversity.csv', col_names = TRUE)
+write_csv(diversity, 'output_data/06_diversity.csv', col_names = TRUE)
 
 ```
 

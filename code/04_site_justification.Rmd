@@ -17,44 +17,46 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 ```{r packages & data}
 
-# Load packages
-
+# Packages
 library(cowplot) # plot_grid function
-library(dunn.test)
-library(ggbiplot)
-library(rstatix)
-library(ggpubr)
+library(dunn.test) # Dunn's test (KW post hoc)
+library(ggbiplot) # PCA ordination
+library(rstatix) # 
+library(ggpubr) # 
 library(tidyverse)
 
-# Load data
-
+# Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv')
 
-spatial <- read_csv('output_data/spatial_metrics.csv')
+# Spatial metrics
+spatial <- read_csv('output_data/03_spatial_metrics.csv')
 
-veg <- read_csv('output_data/veg_metrics.csv')
+# Vegetation metrics
+veg <- read_csv('output_data/08_veg_metrics.csv')
 
-crosswalk <- read_csv('raw_data/spatial_data/crosswalk.csv') # for converting between EVT and CWHR
+# EVT --> CWHR conversion crosswalk
+crosswalk <- read_csv('raw_data/spatial_data/crosswalk.csv')
 
-evt_2012 <- read_csv('output_data/EVT_2012.csv') %>% # pre-fire
+# EVT data
+evt_2012 <- read_csv('output_data/03_EVT_2012.csv') %>% # pre-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
 evt_12_meta <- read_csv('raw_data/spatial_data/EVT_2012.csv')
-evt_2014 <- read_csv('output_data/EVT_2014.csv') %>% # post-fire
+evt_2014 <- read_csv('output_data/03_EVT_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
 evt_14_meta <- read_csv('raw_data/spatial_data/EVT_2014.csv')
 
-evc_2012 <- read_csv('output_data/EVC_2012.csv') %>% # pre-fire
+# EVC data
+evc_2012 <- read_csv('output_data/03_EVC_2012.csv') %>% # pre-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 evc_12_meta <- read_csv('raw_data/spatial_data/EVC_2012.csv')
-evc_2014 <- read_csv('output_data/EVC_2014.csv') %>% # post-fire
+evc_2014 <- read_csv('output_data/03_EVC_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
 
-evc_2012_pixels <- read_csv('output_data/EVC_2012_pixels.csv')
-evc_2014_pixels <- read_csv('output_data/EVC_2014_pixels.csv')
+evc_2012_pixels <- read_csv('output_data/03_EVC_2012_pixels.csv')
+evc_2014_pixels <- read_csv('output_data/03_EVC_2014_pixels.csv')
 
-# vectors
-
+# Vectors for plotting
 year.labs <- c("2012\nPre-fire", "2014\nPost-fire")
 names(year.labs) <- c("2012", "2014")
 
@@ -170,7 +172,7 @@ plot_grid(mtbs_plot, tree_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1, 1, 1.1))
 
-ggsave('figs/fig1C.png', plot = last_plot(),
+ggsave('figs/04_fig1C.png', plot = last_plot(),
        width = 2, height = 3, units = 'in')
 
 ```
@@ -597,7 +599,7 @@ plot_grid(evc_plot, cwhr_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1, 1.1))
 
-ggsave('figs/fig2.png', plot = last_plot(),
+ggsave('figs/04_fig2.png', plot = last_plot(),
        width = 6, height = 5.5, units = 'in')
 
 ```

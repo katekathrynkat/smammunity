@@ -24,26 +24,21 @@ knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
 
 ```{r include=FALSE}
 
-# Load packages
-library(vegan)
-library(rstatix)
-library(cowplot)
-library(janitor)
-library(corrplot)
-library(ggbiplot)
+# Packages
+library(vegan) # community analyses
+library(rstatix) # 
+library(cowplot) # plot_grid function
+library(janitor) # clean column names
+library(corrplot) # correlation matrix
+library(ggbiplot) # PCA ordination plot
+library(dunn.test) # Dunn's test (KW post hoc)
 library(tidyverse)
-library(dunn.test)
 
-# Load data
-
+# Site metadata
 site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-cover_biomass <- read_csv('raw_data/field_data/veg_biomass_cover.csv') %>% clean_names()
-cwd_biomass <- read_csv('raw_data/field_data/veg_biomass_cwd.csv') %>% clean_names()
-shrub_biomass <- read_csv('raw_data/field_data/veg_biomass_shrub.csv') %>% clean_names()
-tree_biomass <- read_csv('raw_data/field_data/veg_biomass_tree.csv') %>% clean_names()
-
+# Field data for vegetation variables: transect
 cover <- read_csv('raw_data/field_data/veg_transect_cover.csv') %>% clean_names()
 cwd <- read_csv('raw_data/field_data/veg_transect_cwd.csv') %>% clean_names()
 shrub <- read_csv('raw_data/field_data/veg_transect_shrub.csv') %>% clean_names()
@@ -286,7 +281,7 @@ summary(veg_pca) # PC1 describes 73.4% of the variance
 
 # Write CSV
 all_metrics <- full_join(veg_metrics, pca_scores)
-write_csv(all_metrics,'output_data/veg_metrics.csv', col_names = TRUE)
+write_csv(all_metrics,'output_data/08_veg_metrics.csv', col_names = TRUE)
 
 ```
 
@@ -392,7 +387,7 @@ plot_grid(tree_plot, shrub_plot, leaf_plot, pca_plot,
           ncol = 2, align = 'v',
           rel_heights = c(1,1.1))
 
-ggsave('figs/fig5a.png', plot = last_plot(),
+ggsave('figs/08_fig5a.png', plot = last_plot(),
        width = 5.5, height = 4, units = 'in')
 
 ```
@@ -406,7 +401,7 @@ plot_grid(cwd_plot, ferb_plot,
           ncol = 1, align = 'v',
           rel_heights = c(1,1.1))
 
-ggsave('figs/fig5b.png', plot = last_plot(),
+ggsave('figs/08_fig5b.png', plot = last_plot(),
        width = 3, height = 4, units = 'in')
 
 ```
