@@ -19,31 +19,33 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE,
 
 ```{r packages and data, include=FALSE}
 
-# Load packages
-library(mvabund)
-library(vegan)
+# Packages
+library(mvabund) # for constructing multivariate abundance models (including fourth-corner)
+library(vegan) # for calculating PCNM distances
 library(qpcR) # for calculating AIC weights
 library(tidyverse)
 
-# Load data
-
+# Small mammal abundance data (site by species matrix)
 matrix_df <- read_csv('output_data/species_matrix.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
+# Small mammal trapping effort
+effort <- read_csv('output_data/effort.csv') %>% 
+  mutate(offset = effort/300) # calculate offset to use in model
+
+# Vegetation variables
 veg_metrics <- read_csv('output_data/veg_metrics.csv') %>% 
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
+# Site coordinates
 site_centroids <- read_csv('output_data/site_centroids.csv')
-
-effort <- read_csv('output_data/effort.csv') %>% 
-  mutate(offset = effort/300)
 
 ```
 
 ```{r include=FALSE}
 
-# Principle Components of Neighborhood Matrix (PCNM)
-
+# Calculate Principle Components of Neighborhood Matrix (PCNM) distances
+# Use in model to account for spatial autocorrelation between sites 
 site_pcnm <- pcnm(dist(site_centroids[,2:3]))
 
 pcnm_vectors <- as.data.frame(site_pcnm$vectors) %>% 
@@ -52,25 +54,25 @@ pcnm_vectors <- as.data.frame(site_pcnm$vectors) %>%
          pcnm_1 = PCNM1) %>% 
   select(site, pcnm_1)
 
-# All predictor variables
-
+# Create data frame with all predictor variables
 vars <- veg_metrics %>% 
   full_join(pcnm_vectors) %>% 
   select(-tree_survival)
 
 ```
 
-Resources:
+Resources for `mvabund`:
 
 - [Introduction from Warton](http://eco-stats.blogspot.com/2012/03/introducing-mvabund-package-and-why.html)
 - [Tutorial](https://www.dropbox.com/s/unwd412a9wbkrl0/mvabundTute.R?dl=0)
 - [Powerpoint about mvabund](http://www.seec.uct.ac.za/sites/default/files/image_tool/images/330/SEEC%20Toolbox%20mvabund.pdf) (video lecture is also useful)
 - [Differences between `anova` and `summary`](https://stats.stackexchange.com/questions/59879/logistic-regression-anova-chi-square-test-vs-significance-of-coefficients-ano)
 - [Wald vs. score test statistic](https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-are-the-likelihood-ratio-wald-and-lagrange-multiplier-score-tests-different-andor-similar/)
+- [Introduction to trait analysis by Warton](https://rpubs.com/dwarton/68823)
 
 ```{r include=FALSE}
 
-# Create mvabund object using species matrix
+# Create mvabund object using the site by species matrix and vegetation variables
 dat <- full_join(matrix_df, vars)
 spp <- mvabund(dat[,3:13])
 
@@ -82,6 +84,7 @@ spp <- mvabund(dat[,3:13])
 meanvar.plot(spp) # looks like a linear increase...
 # need to use appropriate GLM that assumes a similar mean-variance relationship --> negative binomial
 
+# Exploratory plot
 plot(data=dat, spp~severity)
 
 ```
@@ -90,40 +93,62 @@ plot(data=dat, spp~severity)
 
 ## GLM~severity~
 
-- Tests for differences in multivariate community structure among the three fire severity categories
-- i.e. *Does treatment have an effect on assemblage?*
-- Analogous to the ANOSIM and Adonis
-- `anova` determines which predictors are the strongest contributors by sequentially adding them to the restricted (less variables) model (for test=score)
-  - Used the score statistic since means are small because of rare species (this would decrease power when using the Wald statistic)
+*Does treatment have an effect on assemblage?*
+
+Testing for differences in multivariate community structure among the three fire severity categories
+
+<br>
+
+### Model
+
+- **Predictors:** severity + PCNM
+- **Responses:** absolute abundances (`anova.manyglm` can't handle relative abundance)
+  - Trapping effort accounted for with an offset
+  - Assumes negative binomial distribution
 
 ```{r echo=TRUE}
 
-glm <- manyglm(data=dat, spp ~ severity + pcnm_1,
-               composition=FALSE, # the anova function (used next) cannot currently incorporate relative abundance
-               family='negative_binomial', # to account for mean-variance relationship
-               offset = effort$offset) # offset accounts for trapping effort
+glm_sev <- manyglm(data=dat, spp ~ severity + pcnm_1,
+                   composition=FALSE, # anova function (next) can't handle relative abundance
+                   offset=effort$offset, # accounts for trapping effort
+                   family='negative_binomial') # accounts for observed mean-variance relationship
 
-plot(glm) # check for model fit
-
-an <- anova(glm,
-            test='score', # allows for small means due to rare species
-            cor.type='shrink', # accounts for correlation between variables
-            nBoot=999) # number of bootstrap iterations
-an$table
+plot(glm_sev) # check for model fit
 
 ```
 
 <br>
 
-### Indicator species
+### Significance (multivariate)
 
-- Tests univariate (species) differences by severity
-- Same model, different p-value calculation
+- `anova.manyglm` determines which predictors are the strongest contributors by sequentially adding them to the restricted (less variables) model (for test=score)
+  - Used the score test to calculate test statistics since means are small because of rare species (small means decrease power when using the Wald test)
+  - Accounted for correlation between variables by shrinking the correlation matrix
+  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
 
 ```{r echo=TRUE}
 
-an2 <- anova(glm, test='score', cor.type='shrink', nBoot=999, p.uni='adjusted')
-an2
+an_sev <- anova(glm_sev,
+                test='score', # allows for small means due to rare species
+                cor.type='shrink', # accounts for correlation between variables
+                resamp='pit.trap', # p-value calculated via PIT-trap resampling
+                nBoot=999) # number of PIT-trap bootstrap iterations
+an_sev$table
+
+```
+
+<br>
+
+### Significance (univariate)
+
+Testing univariate (species) differences by severity
+
+```{r echo=TRUE}
+
+an_sev_uni <- anova(glm_sev,
+                    test='score', cor.type='shrink', resamp='pit.trap', nBoot=999, # same as above
+                    p.uni='adjusted') # calculate univariate p-values
+an_sev_uni
 
 ```
 
@@ -131,40 +156,20 @@ an2
 
 ## GLM~veg~
 
-- Tests for differences in multivariate community structure according to the vegetation variables
-- i.e. *Which environmental variables are most strongly associated with assemblages?*
-- `summary` determines which predictors are the strongest contributors when all other predictors have been fitted to the restricted (less variables) model (true for for test=score)
+*Which environmental variables are most strongly associated with assemblages?*
 
-**Hypothesis predictor variables:**
-
-- PC1~TSL~
-  - Live tree density
-  - Shrub cover
-  - Litter cover
-- Soft coarse woody debris (CWD)
-- Forb/grass cover
-
-**Model with ALL hypothesis predictor variables**
-
-```{r echo=TRUE}
-
-glm2 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume + forb_grass_cover + pcnm_1,
-               family='negative_binomial', # to account for mean-variance relationship
-               offset=effort$offset)# offset accounts for trapping effort
-
-plot(glm2) # check for model fit
-
-sum <- summary(glm2,
-               test='score', # allows for small means due to rare species
-               cor.type='shrink', # accounts for correlation between variables
-               nBoot=999) # number of bootstrap iterations
-sum
-
-```
+Testing for differences in multivariate small mammal community structure according to the vegetation variables
 
 <br>
 
-### AIC selection
+### AIC model selection
+
+**Candidate predictors:**
+
+- PC1~TSL~ (Live tree density + Shrub cover + Litter cover)
+- Soft coarse woody debris (CWD)
+- Forb/grass cover 
+- PCNM
 
 ```{r echo=FALSE}
 
@@ -187,7 +192,10 @@ for (i in 1:ncol(var_combos)) {
   vars <- levels(var_combos[,i])
   vars_dat <- as.matrix(select(dat,vars))
   K <- length(vars)
-  aic <- manyglm(spp~vars_dat, family='negative_binomial', offset=effort$offset)$AICsum
+  aic <- manyglm(spp~vars_dat,
+                 composition=FALSE,
+                 offset=effort$offset,
+                 family='negative_binomial')$AICsum
   new_combo <- data_frame(vars=c(paste(vars,collapse=" + ")),
                           K=K,
                           aic=aic)
@@ -209,26 +217,43 @@ model_selection <- cbind(aic_arrange,
 head(model_selection, 6)
 ```
 
-**Final model**
+<br>
 
-Vegetation variables included:
+### Final model
 
-- PC1~TSL~
-- Soft CWD
+- **Final predictors:** PC1~TSL~ + Soft CWD
+- **Responses:** absolute abundances
+  - Trapping effort accounted for with an offset
+  - Assumes negative binomial distribution
+  
+```{r echo=TRUE}
+
+glm_veg <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume,
+                   composition=FALSE, # absolute abundance
+                   offset=effort$offset, # trapping effort
+                   family='negative_binomial') # data distribution
+
+plot(glm_veg) # check for model fit
+
+```
+
+<br>
+
+### Significance
+
+- `summary` determines which predictors are the strongest contributors when all other predictors have been fitted to the restricted (less variables) model (true for for test=score)
+  - Used the score test to calculate test statistics
+  - Accounted for correlation between variables by shrinking the correlation matrix
+  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
 
 ```{r echo=TRUE}
 
-glm3 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume,
-               family='negative_binomial', # accounts for mean-variance relationship
-               offset=effort$offset) # accounts for trapping effort
-
-plot(glm3) # check for model fit
-
-sum <- summary(glm3,
-               test='score', # allows for small means due to rare species
-               cor.type='shrink', # accounts for correlation between variables
-               nBoot=999) # number of bootstrap iterations
-sum
+sum_veg <- summary(glm_veg,
+                   test='score', # allows for small means due to rare species
+                   cor.type='shrink', # accounts for correlation between variables
+                   resamp='pit.trap', # p-value calculated via PIT-trap resampling
+                   nBoot=999) # number of PIT-trap bootstrap iterations
+sum_veg
 
 ```
 
@@ -236,10 +261,7 @@ sum
 
 ## GLM~trait~
 
-Resources:
-
-- [Introduction by Warton](https://rpubs.com/dwarton/68823)
-- [Paper using similar methods](https://royalsocietypublishing.org/doi/10.1098/rsos.200076#d3e468)
+Fourth-corner analysis (trait by environment interactions)
 
 ```{r include=FALSE}
 
@@ -257,51 +279,72 @@ rownames(traits) <- trait_new$species
 
 ```
 
-<br>
+### Model
 
-### manyGLM method
-
-- No option for including an offset to account for trapping effort, so used relative abundance data instead
+- **Predictors:** interactions between vegetation variables (PC1~TSL~ + Soft CWD) and small mammal traits (feeding guild + foraging mode + nesting habit)
+- **Responses:** relative small mammal abundances
+  - No option for including an offset to account for trapping effort, so used relative abundance data instead
   - Using relative instead of absolute abundance improved model fit by decreasing heteroscedasticity of residuals
-- `anova` tests whether the environment-trait interactions predict community structure 
+  - Assumes negative binomial distribution
 
 ```{r echo=TRUE}
 
-fc_glm <- traitglm(L_dat, R_dat[-1], traits[-1],
-                   composition=TRUE, # relative abundance
-                   method='manyglm',
-                   family='negative.binomial') # accounts for mean-variance relationship
+glm_trait <- traitglm(L_dat, R_dat[-1], traits[-1],
+                      composition=TRUE, # relative abundance
+                      method='manyglm',
+                      family='negative.binomial') # accounts for mean-variance relationship
 
-plot(fc_glm) # check for model fit
-
-fc_anova <- anova(fc_glm)
-fc_anova
+plot(glm_trait) # check for model fit
 
 ```
 
 <br>
 
-### LASSO penalty method
+### Significance
 
-- Uses the LASSO penalty to do model selection
-- Removes interaction terms that do not decrease BIC
+- `anova` tests whether the environment-trait interactions predict community structure 
+  - Used the score test to calculate test statistics
+  - No need to shrink the correlation matrix
+  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
+
+```{r echo=TRUE}
+
+an_trait <- anova(glm_trait,
+                  test='score', # allows for small means due to rare species
+                  resamp='pit.trap', # p-value calculated via PIT-trap resampling
+                  nBoot=999) # number of PIT-trap bootstrap iterations
+an_trait$table
+
+```
+
+<br>
+
+### LASSO penalty model selection
+
+- Uses the LASSO penalty to do model selection (removes interaction terms that do not decrease BIC)
 - Cannot use `anova` with this method
 - Shows which environment-trait interactions are most important for determining community structure
 
 ```{r echo=TRUE}
 
-fc <- traitglm(L_dat, R_dat[-1], traits[-1],
-               composition=TRUE, # relative abundance
-               method='glm1path', # LASSO penalty
-               family='negative.binomial') # accounts for mean-variance relationship
+glm_fc <- traitglm(L_dat, R_dat[-1], traits[-1],
+                   composition=TRUE, # relative abundance
+                   method='glm1path', # LASSO penalty
+                   family='negative.binomial') # accounts for mean-variance relationship
 
-plot(fc) # check model fit
+plot(glm_fc) # check model fit
 
 ```
 
+<br>
+
+### Heat map
+
+Trait-environment interaction coefficient estimates
+
 ```{r echo=FALSE, fig.height=4, fig.width=3}
 
-fourth <- as_tibble(cbind(trait=rownames(fc$fourth),fc$fourth)) %>% 
+fourth <- as_tibble(cbind(trait=rownames(glm_fc$fourth),glm_fc$fourth)) %>% 
   pivot_longer(cols=2:3,
                names_to='veg') %>% 
   separate(trait, sep=5, into=c('group','trait')) %>% 
@@ -320,13 +363,20 @@ fourth <- as_tibble(cbind(trait=rownames(fc$fourth),fc$fourth)) %>%
     group=factor(group,levels=c('Feeding guild','Foraging mode','Nesting habit')),
     trait=factor(trait, levels=c('Insectivore','Omnivore','Herbivore',
                                  'Ground','Scansorial','Arboreal',
-                                 'Burrow','Hollow','Tree'))
+                                 'Burrow','Hollow','Tree')),
+    label=case_when(
+      value==0~NA_real_,
+      TRUE~round(value,2)
+    )
     )
 
 fourth %>% 
-  ggplot(aes(x=vegetation, y=trait, fill=value)) +
-  geom_tile() +
-  scale_fill_gradient2(low='darkred', high='darkblue', limits=c(-0.4,0.4)) +
+  ggplot(aes(x=vegetation, y=trait)) +
+  geom_tile(aes(fill=value)) +
+  scale_fill_gradient2(low='darkblue', high='darkred', limits=c(-0.4,0.4)) +
+  geom_text(aes(label=label,
+                color=value>0.2 | value<c(-0.2)), size=2.5) +
+  scale_color_manual(guide = FALSE, values = c("black", "white")) +
   scale_x_discrete(labels=parse(text=c('PC1[T+S+L]','Soft~CWD'))) +
   facet_grid(rows=vars(group), scales='free_y', space='free', switch='y') +
   theme_minimal() +
@@ -350,9 +400,6 @@ ggsave('figs/fig6.png', plot = last_plot(),
        width = 2.5, height = 3.7, units = 'in')
 
 ```
-
-- **Figure 6**
-- Heat map showing estimated fourth corner coefficients
 
 ```{r eval=FALSE, include=FALSE}
 rmarkdown::render('code/10_mvglm.Rmd', output_file = '../docs/10_mvglm.html')

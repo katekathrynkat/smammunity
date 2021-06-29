@@ -63,12 +63,10 @@ Clean data exported to raw_data/field_data/smamms_clean.csv.
 
 ```{r packages & data}
 
-# Load packages
-
+# Packages
 library(tidyverse)
 
-# Load data
-
+# Raw small mammal capture data
 dat <- read_csv('raw_data/field_data/smamms_raw.csv',
                 na = c('MD', ''),
                 col_types = cols (day = col_character()))

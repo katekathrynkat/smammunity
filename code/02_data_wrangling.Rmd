@@ -6,9 +6,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-## THINGS TO FIX:
-delete species matrix adj by trapping effort? don't think we ended up using it????
-
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(include=FALSE)
@@ -28,8 +25,6 @@ CSVs created for use in analyses:
 
 - *output_data/species_matrix.csv*: Species matrix for use in vegan
 
-- *output_data/species_matrix_adj.csv*: Species matrix for use in vegan, adjusted for trapping effort
-
 <br>
 
 ***Note:*** These data sets INCLUDE rare species (species with five or less total captures). See 11_rare_species_excluded.Rmd for analyses excluding these species. Rare species are:
@@ -42,19 +37,19 @@ CSVs created for use in analyses:
 
 ```{r packages and data}
 
-# Load packages
-
+# Packages
+library(kableExtra) # making pretty tables
 library(tidyverse)
-library(kableExtra)
 
-# Load data
+# Small mammal capture data
+smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv')
 
-smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') # cleaned mammal data
-
-site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% # site metadata
+# Site metadata
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>%
     mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-traits <- read_csv('raw_data/lit_data/mammal_traits.csv') # mammal trait data
+# Small mammal trait data
+traits <- read_csv('raw_data/lit_data/mammal_traits.csv')
 
 ```
 
@@ -120,20 +115,22 @@ matrix <- unique_smamms %>%
 
 write_csv(matrix, 'output_data/species_matrix.csv')
 
+### NOT USED IN ANALYSES
+
 # Species matrix adjusted for trapping effort
 
-matrix_adj <- unique_smamms %>% 
-  group_by(site, severity, species) %>% 
-  tally() %>% # count individuals per species per site
-  full_join(effort, by = c('site', 'severity')) %>% 
-  mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
-  select(site, species, n_adj)%>% 
-  spread(species, n_adj) %>% # re-format into matrix
-  ungroup() %>% 
-  replace(., is.na(.), 0) %>% # replace NAs with 0
-  arrange(severity)
-
-write_csv(matrix_adj, 'output_data/species_matrix_adj.csv')
+# matrix_adj <- unique_smamms %>% 
+#   group_by(site, severity, species) %>% 
+#   tally() %>% # count individuals per species per site
+#   full_join(effort, by = c('site', 'severity')) %>% 
+#   mutate(n_adj = n/effort*300) %>% # add column for n adjusted for effort
+#   select(site, species, n_adj)%>% 
+#   spread(species, n_adj) %>% # re-format into matrix
+#   ungroup() %>% 
+#   replace(., is.na(.), 0) %>% # replace NAs with 0
+#   arrange(severity)
+# 
+# write_csv(matrix_adj, 'output_data/species_matrix_adj.csv')
 
 ```
 

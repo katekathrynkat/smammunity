@@ -172,7 +172,9 @@ ggplot() +
 
 inext_matrix <- t(matrix_pooled)
 
-out <- iNEXT(inext_matrix, q = 0, datatype = 'abundance')
+out <- iNEXT(inext_matrix,
+             q = 0, # the Hill number to estimate (q = 0 gives richness)
+             datatype = 'abundance') # vs. incidence (presence/absence data)
 
 # Plot curves
 
@@ -181,11 +183,11 @@ df <- fortify(out, type=1) %>%
 
 df <- fortify(out, type=1) %>% 
   mutate(site = factor(site, levels = c('unb', 'mod', 'high')))
-df.point <- df[which(df$method=="observed"),]
-df.line <- df[which(df$method!="observed"),]
+df.point <- df[which(df$method=='observed'),]
+df.line <- df[which(df$method!='observed'),]
 df.line$method <- factor(df.line$method, 
-                         c("interpolated", "extrapolated"),
-                         c("interpolation", "extrapolation"))
+                         c('interpolated', 'extrapolated'),
+                         c('interpolation', 'extrapolation'))
  
 ggplot(df, aes(x = x, y = y, color = site)) + 
   geom_line(data = df.line, aes(linetype = method),
@@ -193,12 +195,16 @@ ggplot(df, aes(x = x, y = y, color = site)) +
   geom_ribbon(aes(ymin = y.lwr, ymax = y.upr, fill = site, color = NULL),
               alpha=0.2) +
   scale_linetype(name = 'Method', labels = c('Interpolation', 'Extrapolation')) +
-  scale_color_manual(name = 'Severity', values = c('#4AB793', '#DCA827', '#D85F2B'),
-                     labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +
-  scale_fill_manual(name = 'Severity', values = c('darkgreen', 'orange', 'red'),
-                    labels = c('Unburned', 'Low-Moderate Severity', 'High Severity')) +
-  labs(x = 'Number of Individuals',
-       y = 'Rarefied Richness') +
+  scale_color_manual(name = 'Fire severity', values = c('#4AB793', '#DCA827', '#D85F2B'),
+                     labels = c('Unburned', 'Low-moderate severity', 'High severity')) +
+  scale_fill_manual(name = 'Fire severity', values = c('darkgreen', 'orange', 'red'),
+                    labels = c('Unburned', 'Low-moderate severity', 'High severity')) +
+  scale_y_continuous(breaks = c(2,4,6,8,10,12)) +
+  labs(x = 'Number of individuals',
+       y = 'Number of species') +
+  guides(color = guide_legend(order=1),
+         fill = guide_legend(order=1),
+         shape = guide_legend(order=2)) +
   theme(legend.title = element_blank()) +
   theme_classic()
 
@@ -279,6 +285,12 @@ summary(aov)
 richness %>% ungroup() %>% tukey_hsd(rarefied_richness~severity)
 cohens_f(aov)
 
+
+#Kruskal-Wallis
+kruskal_test(rarefied_richness~severity, data=richness)
+kruskal_effsize(rarefied_richness~severity, data=richness)
+dunn.test(richness$rarefied_richness, richness$severity, method='bonferroni')
+
 ```
 
 - Significantly different by ANOVA
@@ -352,6 +364,11 @@ aov <- aov(J~severity, data=diversity)
 summary(aov)
 diversity %>% ungroup() %>% tukey_hsd(J~severity)
 cohens_f(aov)
+
+#Kruskal-Wallis
+kruskal_test(J~severity, data=diversity)
+kruskal_effsize(J~severity, data=diversity)
+dunn.test(diversity$J, diversity$severity, method='bonferroni')
 
 ```
 

@@ -17,30 +17,36 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
 
 <br>
 
-Major analyses, excluding rare species (less than 5 individuals captured):
+Major analyses, excluding rare species (<5 individuals captured):
 
-- dusky-footed woodrat (NEFU)
-- yellow pine chipmunk (NEAM)
-- northern flying squirrel (GLSA)
-- pinyon mouse (PETR)
-- western harvest mouse (REME)
+- Dusky-footed woodrat (NEFU)
+- Yellow pine chipmunk (NEAM)
+- Northern flying squirrel (GLSA)
+- Pinyon mouse (PETR)
+- Western harvest mouse (REME)
 
 <br>
 
 ## Data wrangling
 
-```{r packages and data}
+```{r}
 
-# Load packages
-
+# Packages
+library(kableExtra) # making pretty tables
+library(rstatix) # KW test, KW effect size
+library(dunn.test) # Dunn's test (KW post hoc)
+library(effectsize) # 
+library(vegan) # Community analyses (diversity, NMDS, adonis, PCNM)
+library(goeveg) # 
+library(pairwiseAdonis) # post hoc adonis
+library(ggvegan) # making pretty NMDS plot
+library(ggrepel) # making pretty NMDS plot
 library(tidyverse)
-library(kableExtra)
 
-# Load data
-
-smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>% # cleaned mammal data
+# Small mammal capture data
+smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>%
   mutate(species = case_when( 
-    species=='NEFU' ~ 'SPRU', # remove rare species and code as sprung traps
+    species=='NEFU' ~ 'SPRU', # remove rare species and code as sprung (0.5 trapping effort)
     species=='NEAM' ~ 'SPRU',
     species=='GLSA' ~ 'SPRU',
     species=='PETR' ~ 'SPRU',
@@ -48,10 +54,15 @@ smamms_clean <- read_csv('raw_data/field_data/smamms_clean.csv') %>% # cleaned m
     TRUE ~ species
   ))
 
-site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>% # site metadata
+# Site metadata
+site_meta <- read_csv('raw_data/field_data/site_metadata.csv') %>%
     mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
 
-traits <- read_csv('raw_data/lit_data/mammal_traits.csv') # mammal trait data
+# Mammal trait data
+traits <- read_csv('raw_data/lit_data/mammal_traits.csv')
+
+# Species masses
+mass <- read_csv('output_data/species_mass.csv')
 
 ```
 
@@ -122,20 +133,7 @@ kable(matrix) %>%
 
 ## Abundance
 
-```{r packages and data}
-
-# Load packages
-library(rstatix)
-library(dunn.test)
-library(effectsize)
-filter <- dplyr::filter
-
-# Load data
-smamms # output_data/unique_smamms.csv
-captures # output_data/smamms.csv
-effort # output_data/effort.csv
-mass <- read_csv('output_data/species_mass.csv')
-site_meta # raw_data/field_data/site_metadata.csv
+```{r}
 
 # Vectors for ggplot
 cols <- c('#4AB793', '#DCA827', '#D85F2B')
@@ -219,10 +217,7 @@ kruskal_effsize(bm_adj~severity, data=biomass)
 
 ## Diversity
 
-```{r packages and data}
-
-# Load packages
-library(vegan)
+```{r}
 
 # Load data
 matrix_df <- matrix # output_data/species_matrix.csv
@@ -231,7 +226,7 @@ effort # output_data/effort.csv
 
 ```
 
-```{r data wrangling}
+```{r}
 
 # Transform data frames into matrices
 
@@ -268,7 +263,7 @@ xlabs <- c('Unburned', 'Moderate Severity', 'High Severity')
 
 (individual-based rarefaction estimates)
 
-```{r rarefaction, include=FALSE}
+```{r, include=FALSE}
 
 # Calculate richness for each site using rarefaction
 raremax <- min(rowSums(matrix))
@@ -280,7 +275,7 @@ richness <- tibble(site = matrix_df$site, severity = matrix_df$severity, rarefie
 
 ```
 
-```{r Rarefied Richness boxplot}
+```{r}
 
 # Jitterplot with mean/SE
 ggplot(richness, aes(x = severity, y = rarefied_richness)) +
@@ -318,7 +313,7 @@ diversity$J[is.nan(diversity$J)] <- NA
 
 **Pielou's Evenness (J) decreased across the fire severity gradient:**
 
-```{r J boxplot}
+```{r}
 
 # Jitterplot with mean/SE
 ggplot(diversity, aes(x = severity, y = J)) +
@@ -343,14 +338,7 @@ cohens_f(aov)
 
 ## NMDS
 
-
-```{r packages and data}
-
-# Load packages
-library(goeveg)
-library(pairwiseAdonis)
-library(ggvegan)
-library(ggrepel)
+```{r}
 
 # Load data
 matrix_df #output_data/species_matrix.csv
@@ -362,7 +350,7 @@ smamm_meta <- read_csv('raw_data/lit_data/mammal_traits.csv')
 
 ```
 
-```{r data wrangling}
+```{r}
 
 # Transform matrices
 matrix_hell <- decostand(matrix, 'hellinger')
@@ -465,9 +453,9 @@ text(ord, display = 'species',
 
 <br>
 
-## mvGLM
+## Multivariate GLMS
 
-```{r packages and data, include=FALSE}
+```{r, include=FALSE}
 
 # Load packages
 library(mvabund)
@@ -529,6 +517,7 @@ plot(data=dat, spp~severity)
 ```{r echo=TRUE}
 
 glm <- manyglm(data=dat, spp ~ severity + pcnm_1,
+               composition=FALSE, # the anova function (used next) cannot [currently] incorporate relative abundance
                family='negative_binomial', # to account for mean-variance relationship
                offset = effort2$offset) # offset accounts for trapping effort
 
@@ -537,18 +526,20 @@ plot(glm) # check for model fit
 an <- anova(glm,
             test='score', # allows for small means due to rare species
             cor.type='shrink', # accounts for correlation between variables
-            nBoot=999) # number of bootstrap iterations
+            resamp = 'pit.trap', # p-value calculated via PIT-trap resampling
+            nBoot=999) # number of PIT-trap bootstrap iterations
 an$table
 
 ```
 
 <br>
 
-### Indicator species
+#### Indicator species
 
 ```{r echo=TRUE}
 
-an2 <- anova(glm, test='score', cor.type='shrink', nBoot=999, p.uni='adjusted')
+an2 <- anova(glm, test='score', cor.type='shrink', resamp='pit.trap', nBoot=999,
+             p.uni='adjusted')
 an2
 
 ```
@@ -561,8 +552,9 @@ an2
 ```{r echo=TRUE}
 
 glm2 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume + forb_grass_cover + pcnm_1,
-               family='negative_binomial', # to account for mean-variance relationship
-               offset=effort2$offset)# offset accounts for trapping effort
+                composition=FALSE,
+                family='negative_binomial', # to account for mean-variance relationship
+                offset=effort2$offset)# offset accounts for trapping effort
 
 plot(glm2) # check for model fit
 
@@ -576,7 +568,7 @@ sum
 
 <br>
 
-### AIC selection
+#### AIC selection
 
 ```{r echo=FALSE}
 
@@ -620,8 +612,6 @@ model_selection <- cbind(aic_arrange,
 head(model_selection, 6)
 ```
 
-Only difference is that PCNM is now added to the model.
-
 **Final model**
 
 Vegetation variables included:
@@ -650,15 +640,16 @@ sum
 ```{r include=FALSE}
 
 # Data wrangling
-trait_new <- read.csv('raw_data/lit_data/mammal_traits_NEW.csv') %>% 
+
+trait_new <- read.csv('raw_data/lit_data/mammal_traits_NEW.csv') %>%
   arrange(species)
 dat2 <- as.data.frame(dat)
-L_dat <- dat2[c(3:8)] %>% 
+L_dat <- dat2[c(3:8)] %>%
   mutate_each(funs(if(is.numeric(.)) as.integer(.) else .))
 rownames(L_dat) <- dat$site
 R_dat <- dat2[c(2,14:15)]
 rownames(R_dat) <- dat$site
-trait_new2 <- trait_new %>% 
+trait_new2 <- trait_new %>%
   filter(species != 'GLSA', species != 'NEFU', species != 'NEAM',
          species != 'PETR', species != 'REME')
 traits <- trait_new2[c(3:6)]
@@ -677,8 +668,11 @@ fc_glm <- traitglm(L_dat, R_dat[-1], traits[-1],
 
 plot(fc_glm) # check for model fit
 
-fc_anova <- anova(fc_glm)
-fc_anova
+fc_an <- anova(fc_glm,
+               test='score', # allows for small means due to rare species
+               resamp = 'pit.trap', # p-value calculated via PIT-trap resampling
+               nBoot=999) # number of PIT-trap bootstrap iterations
+fc_anova$table
 
 ```
 
@@ -689,9 +683,9 @@ fc_anova
 ```{r echo=TRUE}
 
 fc <- traitglm(L_dat, R_dat[-1], traits[-1],
-               composition=TRUE, # relative abundance
+               family='negative.binomial', # accounts for mean-variance relationship
                method='glm1path', # LASSO penalty
-               family='negative.binomial') # accounts for mean-variance relationship
+               composition=TRUE) # relative abundance
 
 plot(fc) # check model fit
 
@@ -699,53 +693,53 @@ plot(fc) # check model fit
 
 ```{r echo=FALSE, fig.height=4, fig.width=3}
 
-fourth <- as_tibble(cbind(trait=rownames(fc$fourth),fc$fourth)) %>% 
-  pivot_longer(cols=2:3,
-               names_to='veg') %>% 
-  separate(trait, sep=5, into=c('group','trait')) %>% 
-  mutate(
-    value=as.numeric(value),
-    vegetation=case_when(
-      veg=='pca_score'~'PC1[T+S+L]',
-      veg=='soft_cwd_volume'~'Soft CWD'
-    ),
-    vegetation=factor(vegetation, levels=c('PC1[T+S+L]', 'Soft CWD')),
-    group=case_when(
-      group=='nests'~'Nesting habit',
-      group=='guild'~'Feeding guild',
-      group=='forag'~'Foraging mode'
-    ),
-    group=factor(group,levels=c('Feeding guild','Foraging mode','Nesting habit')),
-    trait=factor(trait, levels=c('Insectivore','Omnivore','Herbivore',
-                                 'Ground','Scansorial','Arboreal',
-                                 'Burrow','Hollow','Tree'))
-    )
-
-fourth %>% 
-  ggplot(aes(x=vegetation, y=trait, fill=value)) +
-  geom_tile() +
-  scale_fill_gradient2(low='darkred', high='darkblue', limits=c(-0.4,0.4)) +
-  scale_x_discrete(labels=parse(text=c('PC1[T+S+L]','Soft~CWD'))) +
-  facet_grid(rows=vars(group), scales='free_y', space='free', switch='y') +
-  theme_minimal() +
-  theme(panel.border = element_rect(fill=NA),
-        panel.spacing = unit(0,'cm'),
-        axis.text.x = element_text(angle=35, vjust=1.3, hjust=1.2,
-                                   face='bold', color='black'),
-        axis.ticks = element_line(),
-        strip.placement = 'outside',
-        strip.background.y = element_rect(fill=NA),
-        strip.text = element_text(face='bold'),
-        legend.key.height = unit(0.5,'in'),
-        axis.title = element_text(size=10),
-        legend.key.width = unit(0.1,'in'),
-        legend.title = element_blank(),
-        legend.box.spacing = unit(0.05,'in'),
-        panel.grid = element_blank()) +
-  labs(x='Vegetation variable', y='Small mammal trait')
-
-ggsave('figs/fig6.png', plot = last_plot(),
-       width = 2.5, height = 3.7, units = 'in')
+# fourth <- as_tibble(cbind(trait=rownames(fc$fourth),fc$fourth)) %>% 
+#   pivot_longer(cols=2:3,
+#                names_to='veg') %>% 
+#   separate(trait, sep=5, into=c('group','trait')) %>% 
+#   mutate(
+#     value=as.numeric(value),
+#     vegetation=case_when(
+#       veg=='pca_score'~'PC1[T+S+L]',
+#       veg=='soft_cwd_volume'~'Soft CWD'
+#     ),
+#     vegetation=factor(vegetation, levels=c('PC1[T+S+L]', 'Soft CWD')),
+#     group=case_when(
+#       group=='nests'~'Nesting habit',
+#       group=='guild'~'Feeding guild',
+#       group=='forag'~'Foraging mode'
+#     ),
+#     group=factor(group,levels=c('Feeding guild','Foraging mode','Nesting habit')),
+#     trait=factor(trait, levels=c('Insectivore','Omnivore','Herbivore',
+#                                  'Ground','Scansorial','Arboreal',
+#                                  'Burrow','Hollow','Tree'))
+#     )
+# 
+# fourth %>% 
+#   ggplot(aes(x=vegetation, y=trait, fill=value)) +
+#   geom_tile() +
+#   scale_fill_gradient2(low='darkred', high='darkblue', limits=c(-0.4,0.4)) +
+#   scale_x_discrete(labels=parse(text=c('PC1[T+S+L]','Soft~CWD'))) +
+#   facet_grid(rows=vars(group), scales='free_y', space='free', switch='y') +
+#   theme_minimal() +
+#   theme(panel.border = element_rect(fill=NA),
+#         panel.spacing = unit(0,'cm'),
+#         axis.text.x = element_text(angle=35, vjust=1.3, hjust=1.2,
+#                                    face='bold', color='black'),
+#         axis.ticks = element_line(),
+#         strip.placement = 'outside',
+#         strip.background.y = element_rect(fill=NA),
+#         strip.text = element_text(face='bold'),
+#         legend.key.height = unit(0.5,'in'),
+#         axis.title = element_text(size=10),
+#         legend.key.width = unit(0.1,'in'),
+#         legend.title = element_blank(),
+#         legend.box.spacing = unit(0.05,'in'),
+#         panel.grid = element_blank()) +
+#   labs(x='Vegetation variable', y='Small mammal trait')
+# 
+# ggsave('figs/fig6.png', plot = last_plot(),
+#        width = 2.5, height = 3.7, units = 'in')
 
 ```
 
