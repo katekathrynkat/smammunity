@@ -3,7 +3,7 @@ SMAMMUNITY: SMall mAMMal commUNITY
 
 *Analysis of small mammal community structure, habitat, and functional traits after the 2017 King Fire in the Sierra Nevada, CA*
 
-**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted.
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
 
 -----
 
