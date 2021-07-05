@@ -53,8 +53,6 @@ rownames(matrix) <- matrix_df$site
 
 matrix_hell <- decostand(matrix, 'hellinger') # Hellinger transformation
 
-matrix_sqrt <- sqrt(matrix) # Square-root transformation
-
 # Severity data frame
 sevs <- select(matrix_df, site, severity)
 
@@ -226,7 +224,6 @@ site_points <- fortify(ord) %>%
   filter(Score == 'sites') %>% 
   full_join(sevs, by = c('Label' = 'site')) %>% 
   dplyr::rename(group = severity)
-
 
 spp_points <- fortify(ord) %>% 
   filter(Score == 'species')

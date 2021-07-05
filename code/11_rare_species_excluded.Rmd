@@ -443,6 +443,8 @@ plot(fit,
 text(ord, display = 'species',
      cex = 0.7, col = 'grey30')
 
+fit
+
 ```
 
 <br>
@@ -585,9 +587,21 @@ glm_veg <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume,
                    offset=effort$offset, # trapping effort
                    family='negative_binomial') # data distribution
 
+glm_veg2 <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume + pcnm_1,
+                   composition=FALSE, # absolute abundance
+                   offset=effort$offset, # trapping effort
+                   family='negative_binomial') # data distribution
+
 plot(glm_veg) # check for model fit
+plot(glm_veg2)
 
 # Significance
+an_veg <- anova(glm_veg,
+                test='score', # for calculating test statistics
+                cor.type='shrink', # correlation matrix adjustment
+                resamp='pit.trap', # p-value calculated via PIT-trap resampling
+                nBoot=999) # number of PIT-trap bootstrap iterations
+
 sum_veg <- summary(glm_veg,
                    test='score', # allows for small means due to rare species
                    cor.type='shrink', # accounts for correlation between variables
@@ -598,6 +612,7 @@ sum_veg <- summary(glm_veg,
 
 ```{r}
 sum_veg
+an_veg
 ```
 
 ### GLM~trait~

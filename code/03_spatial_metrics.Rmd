@@ -111,14 +111,16 @@ proj4string(site_points) <- '+proj=utm +zone=10 +south +ellps=WGS84 +datum=WGS84
 sites_aea <- spTransform(site_points, CRS('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0
 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0 ')) # update site CRS to match mtbs CRS
 
-# Export to csv
+sites_longlat <- spTransform(site_points, CRS('+proj=longlat + ellps=WGS84')) # update site CRS to lat/long decimal degrees for calculating dbMEM (spatial predictor for GLMs)
 
-x <- coordinates(sites_aea)[,1]
-y <- coordinates(sites_aea)[,2]
+x <- coordinates(sites_longlat)[,1]
+y <- coordinates(sites_longlat)[,2]
 
-site_centroids <- data.frame(sites_aea$site, x, y)
+sites_longlat_df <- data.frame(sites_aea$site, x, y) %>% 
+  mutate(proj = 'longlat', ellps = 'WGS84') %>% 
+  rename(site = sites_aea.site)
 
-write_csv(site_centroids,'output_data/03_site_centroids.csv', col_names = TRUE)
+write_csv(sites_longlat_df, 'output_data/03_site_coords.csv', col_names = TRUE)
 
 ```
 

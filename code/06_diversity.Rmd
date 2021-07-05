@@ -25,7 +25,7 @@ library(iNEXT) # rarefaction curves
 library(dunn.test) # Dunn's test (KW post hoc)
 library(rstatix) # 
 library(ggpubr) # 
-library(effectsize) # 
+library(effectsize) # for eta-squared
 library(tidyverse)
 
 # Small mammal site by species matrix
@@ -283,8 +283,7 @@ ggplot(richness, aes(x = severity, y = rarefied_richness)) +
 aov <- aov(rarefied_richness~severity, data=richness)
 summary(aov)
 richness %>% ungroup() %>% tukey_hsd(rarefied_richness~severity)
-cohens_f(aov)
-
+eta_squared(aov)
 
 #Kruskal-Wallis
 kruskal_test(rarefied_richness~severity, data=richness)
