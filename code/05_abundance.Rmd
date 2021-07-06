@@ -1,10 +1,13 @@
 ---
 title: "Abundance Analyses"
-author: "Kate Culhane"
+subtitle: "From [SMAMMUNITY: SMall mAMMal commUNITY](https://github.com/katekathrynkat/smammunity)"
 output:
   html_document:
     toc: true
     toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: hide
 editor_options: 
   chunk_output_type: console
 ---
@@ -15,7 +18,14 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width=5, fig.height=3)
 ```
 
-<br>
+**Kate Culhane**, Dept. of Ecology, Evolution, and Marine Biology, UC Santa Barbara\
+[kathrynculhane\@ucsb.edu](mailto:kathrynculhane@ucsb.edu){.email}
+
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. (2021). Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
+
+**Source code:** [05_abundance.Rmd](https://github.com/katekathrynkat/smammunity/blob/master/code/05_abundance.Rmd)
+
+---
 
 ```{r packages and data}
 
@@ -87,9 +97,10 @@ kable(summary[,2:4], col.names = c('Binomial', 'Family', 'Individuals')) %>%
 ```
 
 - Although traps were primarily open at night, we can still include diurnal species (chipmunks, squirrels) in measures of relative abundance because traps were opened and closed at approximately the same time each day.
+
 - Flying squirrels spend a significant amount of time foraging on the ground, so their capture was not a fluke.
 
-<br>
+---
 
 ## Ratio of recaptured animals
 
@@ -118,9 +129,10 @@ kruskal.test(rate~severity, data=ratio)
 ```
 
 - Ratio of recaptures : total captures for each site
+
 - Very similar between treatments (sort of all over the place, though)
 
-<br>
+---
 
 ## Proportional abundance
 
@@ -239,10 +251,9 @@ ggsave('figs/05_fig4a.png', plot = last_plot(),
 
 ```
 
-- **Figure 4a**
 - Habitat preferences for the 11 species of mammals, standardized by trapping effort.
 
-<br>
+---
 
 ## Total abundance
 
@@ -308,7 +319,9 @@ kruskal_effsize(n_adj~severity, data=abundance)
 ```
 
 - Jitter plot points represent total small mammal abundance at each site; error bars represent mean and standard error for each fire severity category.
+
 - Abundance was standardized by trapping effort.
+
 - Differences marginally significant by K-W (p=0.06, large eff size)
 
 <br>
@@ -406,9 +419,10 @@ kruskal_effsize(biomass~severity, data=biomass)
 ```
 
 - Similar pattern, but low/mod sites seem to have proportionally high biomass (probably because of ground squirrels)
+
 - NOT significant by K-W (p = 0.48, small eff size)
 
-<br>
+---
 
 ## Abundance by species
 
@@ -450,7 +464,9 @@ for (i in unique(smamms$species)) {
 ```
 
 - Jitter plot points represent total small mammal abundance at each site; horizontal bars represent mean and standard error for each fire severity category.
+
 - Abundance was standardized by trapping effort for each species individually (i.e. non-target species were counted as half of a trap night, similar to treatment of sprung traps).
+
 - Two of these sites look like outliers:
   - HICORN had a ridiculous number of PEMA
   - MIXMOR had a lot of PEMA, OTBE, and SOTR
@@ -540,6 +556,7 @@ kruskal_effsize(n_adj_pema~severity, data=pema)
 ```
 
 - Jitter plot points represent PEMA abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
+
 - Significant by K-W (p = 0.01, large eff size)
 
 <br>
@@ -625,6 +642,7 @@ kruskal_effsize(n_adj_sotr~severity, data=sotr)
 ```
 
 - Jitter plot points represent SOTR abundance at each site; horizontal bars represent mean and standard error for each fire severity category. Abundance was standardized by trapping effort.
+
 - Significant by K-W (p < 0.001, large eff size)
 
 ```{r include=FALSE}

@@ -1,10 +1,13 @@
 ---
 title: "Site Justification"
-author: "Kate Culhane"
+subtitle: "From [SMAMMUNITY: SMall mAMMal commUNITY](https://github.com/katekathrynkat/smammunity)"
 output:
   html_document:
     toc: true
     toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: hide
 editor_options: 
   chunk_output_type: console
 ---
@@ -14,6 +17,15 @@ knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width=5, fig.height=3)
 ```
+
+**Kate Culhane**, Dept. of Ecology, Evolution, and Marine Biology, UC Santa Barbara\
+[kathrynculhane\@ucsb.edu](mailto:kathrynculhane@ucsb.edu){.email}
+
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. (2021). Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
+
+**Source code:** [04_site_justification.Rmd](https://github.com/katekathrynkat/smammunity/blob/master/code/04_site_justification.Rmd)
+
+---
 
 ```{r packages & data}
 
@@ -40,18 +52,18 @@ crosswalk <- read_csv('raw_data/spatial_data/crosswalk.csv')
 # EVT data
 evt_2012 <- read_csv('output_data/03_EVT_2012.csv') %>% # pre-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
-evt_12_meta <- read_csv('raw_data/spatial_data/EVT_2012.csv')
+# evt_12_meta <- read_csv('raw_data/spatial_data/EVT_2012.csv')
 evt_2014 <- read_csv('output_data/03_EVT_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high'))) 
-evt_14_meta <- read_csv('raw_data/spatial_data/EVT_2014.csv')
+# evt_14_meta <- read_csv('raw_data/spatial_data/EVT_2014.csv')
 
 # EVC data
 evc_2012 <- read_csv('output_data/03_EVC_2012.csv') %>% # pre-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evc_12_meta <- read_csv('raw_data/spatial_data/EVC_2012.csv')
+# evc_12_meta <- read_csv('raw_data/spatial_data/EVC_2012.csv')
 evc_2014 <- read_csv('output_data/03_EVC_2014.csv') %>% # post-fire
   mutate(severity = factor(severity, levels = c('unb', 'mod', 'high')))
-evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
+# evc_14_meta <- read_csv('raw_data/spatial_data/EVC_2014.csv')
 
 evc_2012_pixels <- read_csv('output_data/03_EVC_2012_pixels.csv')
 evc_2014_pixels <- read_csv('output_data/03_EVC_2014_pixels.csv')

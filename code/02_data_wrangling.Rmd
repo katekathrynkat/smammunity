@@ -1,7 +1,10 @@
 ---
 title: "Data Wrangling"
-author: "Kate Culhane"
-output: html_document
+subtitle: "From [SMAMMUNITY: SMall mAMMal commUNITY](https://github.com/katekathrynkat/smammunity)"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
 editor_options: 
   chunk_output_type: console
 ---
@@ -11,25 +14,32 @@ knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(include=FALSE)
 ```
 
-<br>
+**Kate Culhane**, Dept. of Ecology, Evolution, and Marine Biology, UC Santa Barbara  
+kathrynculhane@ucsb.edu
+
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. (2021). Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
+
+**Source code:** [02_data_wrangling.Rmd](https://github.com/katekathrynkat/smammunity/blob/master/code/02_data_wrangling.Rmd)
+
+---
 
 ### Pre-analysis manipulation of datasets
 
 CSVs created for use in analyses (in folder "output_data"):
 
-- *02_smamms.csv*: All small mammal capture data joined with site and species information
+- **02_smamms.csv**: All small mammal capture data joined with site and species information
 
-- *02_unique_smamms.csv*: Condensed small mammal capture data with one row per unique individual and no empty trap data
+- **02_unique_smamms.csv**: Condensed small mammal capture data with one row per unique individual and no empty trap data
 
-- *02_effort.csv*: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)
+- **02_effort.csv**: Total trapping effort at each site (number of effective trap nights at each site during the entire trapping period, maximum of 300)
 
-- *02_species_matrix.csv*: Species matrix for use in vegan
+- **02_species_matrix.csv**: Species matrix for use in vegan
 
-- *02_species_matrix_adj.csv*: Species matrix for use in vegan, adjusted for trapping effort
+- **02_species_matrix_adj.csv**: Species matrix for use in vegan, adjusted for trapping effort
 
 <br>
 
-***Note:*** These data sets INCLUDE rare species (species with five or less total captures). See 11_rare_species_excluded.Rmd for analyses excluding these species. Rare species are:
+**Note:** These data sets INCLUDE rare species (species with five or less total captures). See [11. Analyses with rare species excluded](https://htmlpreview.github.io/?https://github.com/katekathrynkat/smammunity/blob/master/docs/11_rare_species_excluded.html) for analyses excluding these species. Rare species are:
 
 - dusky-footed woodrat (NEFU)
 - yellow pine chipmunk (NEAM)
@@ -134,7 +144,7 @@ write_csv(matrix_adj, 'output_data/02_species_matrix_adj.csv')
 
 ```
 
-<br>
+---
 
 **Site by species matrix**
 

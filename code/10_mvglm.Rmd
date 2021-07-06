@@ -11,7 +11,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = '..')
-knitr::opts_chunk$set(warning = FALSE, message = FALSE,
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.height=3.5, fig.width=5)
 ```
 
@@ -64,31 +64,34 @@ spp <- mvabund(dat[,3:13])
 
 **Purpose:** Create spatial filters that remove the spatial autocorrelation from the residuals of the community structure GLMs to meet assumption of independence
 
-Resources for MEM analysis:
+**Resources for MEM analysis:**
 
-- [Bauman et al. 2018: Optimizing the choice of a spatial weighting matrix in eigenvector-based methods](https://doi.org/10.1002/ecy.2469)
-- [Bauman et al. 2018, Appendix S3: Tutorial to optimize the selection of a spatial weighting matrix and/or the selection of a subset of spatial predictors in  eigenvector-mapping methods](https://esajournals.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fecy.2469&file=ecy2469-sup-0003-AppendixS3.pdf)
+- [Bauman et al. 2018:](https://doi.org/10.1002/ecy.2469) Optimizing the choice of a spatial weighting matrix in eigenvector-based methods
+- [Bauman et al. 2018, Appendix S3:](https://esajournals.onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fecy.2469&file=ecy2469-sup-0003-AppendixS3.pdf) Tutorial to optimize the selection of a spatial weighting matrix and/or the selection of a subset of spatial predictors in eigenvector-mapping methods
 
-MEM analysis
- 
-- MEM variables (spatial eigenvectors/predictors) are derived from a spatial weighting matrix (SWM)
-- Spatial weighting matrix (W)
+**Spatial weighting matrix (SWM)**
+
   - Describes the relations among a set of sampled sites
   - Calculated as the element-wise product of a connectivity matrix (B) and weighting matrix (A)
-- Connectivity matrix (B)
+- *Connectivity matrix (B)*
   - Graph-based methods: Delaunay triangulation, Gabriel's graph, Relative neighbourhood graph, Minimum spanning tree
   - Distance based methods: Principal Coordinates of Neighbour Matrices (PCNM)
-- Weighting matrix (A)
-- SWM selection
-  - Determine candidate matrices
-    - For B: Visualize the connection scheme and compare to realistic landscape connectivity
-      - Considering that it's highly unlikely that smamms traveled between the farthest sites (or across the river), we ruled out Delauney triangulation
-    - For A: View plot connectivity vs. distance with different functions (see Bauman et al. 2018, Appendix S1, Fig. S2)
-      - We chose a weighting matrix that uses a linear function to indicate that connectivity with distance (smamms are less likely to travel between distant sites); see Dray et al. 2006
-  - Select a candidate using forward selection with model residuals
-    - Use residuals from multivariate GLM (spp abundances ~ severity)
-    - Optimize the selection of the spatial variables unexplained by severity
-  
+- *Weighting matrix (A)*
+
+**SWM selection**
+
+1. Determine candidate matrix B
+  - Visualize the connection scheme and compare to realistic landscape connectivity
+  - *Considering that it's highly unlikely that smamms traveled between the farthest sites (or across the river), we ruled out Delauney triangulation*
+2. Determine candidate matrix A
+  - View plot connectivity vs. distance with different functions (see Bauman et al. 2018, Appendix S1, Fig. S2)
+  - *We chose a weighting matrix that uses a linear function to indicate that connectivity with distance (smamms are less likely to travel between distant sites); see Dray et al. 2006*
+  - *The PCNM method does not incorporate weighting matrix, so we also included weights = 'binary' option*
+3. Select a candidate using forward selection with model residuals
+  -   Goal: Optimize the selection of the spatial variables unexplained by severity
+  -   Multivariate data requires use of forward selection
+  -   *We used residuals from a multivariate GLM (spp abundances ~ severity)*
+
 ```{r}
 
 # Explore SWM possibilities (opens interactive window)
@@ -97,7 +100,7 @@ MEM analysis
 
 # Create candidate SWMs
 swm_can <- listw.candidates(site_coords[2:3], # uses only site coordinates
-                            nb = c('rel', 'rel', 'mst', # connectivity matrix: graph-based
+                            nb = c('gab', 'rel', 'mst', # connectivity matrix: graph-based
                                    'pcnm'), # connectivity matrix: distance-based (PCNM)
                             weights = c('binary', 'flin')) # weight matrix: absent or linear
 
@@ -110,32 +113,54 @@ alpha <- round(1 - (1 - 0.05)^(1/length(swm_can)), 4)
 glm <- manyglm(data=dat, spp ~ severity, # multivariate GLM
                composition=FALSE, # use absolute abundance data
                offset=effort$offset, # account for trapping effort
-               family='negative_binomial') # abundance data have a negative binomial distribution
-glm_res <- residuals(glm) # multivariate GLM residuals
+               family='negative_binomial') # distribution of abundance data
+set.seed(1)
+glm_res <- residuals(glm) # multivariate Dunn-Smyth residuals
 
 # Selection using multivariate GLM residuals
-swm_sel <- listw.select(glm_res, # response variable (residuals of multivariate GLM)
+swm_sel <- listw.select(glm_res, # response variable Dunn-Smyth residuals
                         swm_can, # candidate SWMs 
-                        MEM.autocor = "positive", # only select positive eigenvectors
-                        method = 'FWD', # use forward selection because response is multivariate
+                        MEM.autocor = "positive", # select positive eigenvectors
+                        method = 'FWD', # use forward selection
                         alpha = alpha, # calculated above
                         p.adjust = TRUE)
 swm_sel$candidates
 
+# Checking multiple seeds because Dunn-Smyth residuals involve random number generation
+seeds <- c(1:50)
+for (i in seeds) {
+  set.seed(i)
+  glm_res <- residuals(glm) # multivariate Dunn-Smyth residuals
+  swm_sel <- listw.select(glm_res, # response variable (Dunn-Smyth residuals)
+                        swm_can, # candidate SWMs 
+                        MEM.autocor = "positive", # select positive eigenvectors
+                        method = 'FWD', # use forward selection
+                        alpha = alpha, # calculated above
+                        p.adjust = TRUE)
+  if (is.null(swm_sel$best)) {
+    print(paste0('Seed = ', i, ': NONE SIGNIFICANT'))
+  } else {
+    print(paste0('Seed = ', i))
+    print(swm_sel$candidates)
+  }
+}
+
 ```
+
+<br>
 
 ## Multivariate GLMs
 
 Resources for `mvabund`:
 
-- [Introduction from Warton](http://eco-stats.blogspot.com/2012/03/introducing-mvabund-package-and-why.html)
-- [Tutorial](https://www.dropbox.com/s/unwd412a9wbkrl0/mvabundTute.R?dl=0)
-- [Powerpoint about mvabund](http://www.seec.uct.ac.za/sites/default/files/image_tool/images/330/SEEC%20Toolbox%20mvabund.pdf) (video lecture is also useful)
-- [Differences between `anova` and `summary`](https://stats.stackexchange.com/questions/59879/logistic-regression-anova-chi-square-test-vs-significance-of-coefficients-ano)
-- [Wald vs. score test statistic](https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-are-the-likelihood-ratio-wald-and-lagrange-multiplier-score-tests-different-andor-similar/)
-- [Introduction to trait analysis by Warton](https://rpubs.com/dwarton/68823)
+-   [Introduction from Warton](http://eco-stats.blogspot.com/2012/03/introducing-mvabund-package-and-why.html)
+-   [Tutorial](https://www.dropbox.com/s/unwd412a9wbkrl0/mvabundTute.R?dl=0)
+-   [Powerpoint about mvabund](http://www.seec.uct.ac.za/sites/default/files/image_tool/images/330/SEEC%20Toolbox%20mvabund.pdf) (video lecture is also useful)
+-   [Differences between `anova` and `summary`](https://stats.stackexchange.com/questions/59879/logistic-regression-anova-chi-square-test-vs-significance-of-coefficients-ano)
+-   [Wald vs. score test statistic](https://stats.idre.ucla.edu/other/mult-pkg/faq/general/faqhow-are-the-likelihood-ratio-wald-and-lagrange-multiplier-score-tests-different-andor-similar/)
+-   [Introduction to trait analysis by Warton](https://rpubs.com/dwarton/68823)
 
-```{r include=FALSE, eval=FALSE}
+```{r eval=FALSE}
 
 # Compare relationship between means and variances
 meanvar.plot(spp) # looks like a linear increase...
@@ -158,14 +183,16 @@ Testing for differences in multivariate community structure among the three fire
 
 ### Model
 
-- **Predictors:** severity + PCNM
-- **Responses:** absolute abundances (`anova.manyglm` can't handle relative abundance)
-  - Trapping effort accounted for with an offset
-  - Assumes negative binomial distribution
+-   **Predictors:** severity
+
+-   **Responses:** absolute abundances (`anova.manyglm` can't handle relative abundance)
+
+    -   Trapping effort accounted for with an offset
+    -   Assumes negative binomial distribution
 
 ```{r echo=TRUE}
 
-glm_sev <- manyglm(data=dat, spp ~ severity + pcnm_1,
+glm_sev <- manyglm(data=dat, spp ~ severity,
                    composition=FALSE, # anova function (next) can't handle relative abundance
                    offset=effort$offset, # accounts for trapping effort
                    family='negative_binomial') # accounts for observed mean-variance relationship
@@ -176,36 +203,25 @@ plot(glm_sev) # check for model fit
 
 <br>
 
-### Significance (multivariate)
+### Significance (multivariate & univariate)
 
-- `anova.manyglm` determines which predictors are the strongest contributors by sequentially adding them to the restricted (less variables) model (for test=score)
-  - Used the score test to calculate test statistics since means are small because of rare species (small means decrease power when using the Wald test)
-  - Accounted for correlation between variables by shrinking the correlation matrix
-  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
+-   `anova.manyglm` determines which predictors are the strongest contributors by sequentially adding them to the restricted (less variables) model (for test=score)
+
+    -   Used the score test to calculate test statistics since means are small because of rare species (small means decrease power when using the Wald test)
+    -   Accounted for correlation between variables by shrinking the correlation matrix
+    -   Calculated p-values using PIT-trap resampling with 999 bootstrap samples
+    -   Calculated p-values for both multivariate and univariate (species-specific) responses
 
 ```{r echo=TRUE}
 
+set.seed(2021)
 an_sev <- anova(glm_sev,
                 test='score', # allows for small means due to rare species
                 cor.type='shrink', # accounts for correlation between variables
                 resamp='pit.trap', # p-value calculated via PIT-trap resampling
-                nBoot=999) # number of PIT-trap bootstrap iterations
-an_sev$table
-
-```
-
-<br>
-
-### Significance (univariate)
-
-Testing univariate (species) differences by severity
-
-```{r echo=TRUE}
-
-an_sev_uni <- anova(glm_sev,
-                    test='score', cor.type='shrink', resamp='pit.trap', nBoot=999, # same as above
-                    p.uni='adjusted') # calculate univariate p-values
-an_sev_uni
+                nBoot=999, # number of PIT-trap bootstrap iterations
+                p.uni='adjusted') # also calculate univariate p-values
+an_sev
 
 ```
 
@@ -223,15 +239,14 @@ Testing for differences in multivariate small mammal community structure accordi
 
 **Candidate predictors:**
 
-- PC1~TSL~ (Live tree density + Shrub cover + Litter cover)
-- Soft coarse woody debris (CWD)
-- Forb/grass cover 
-- PCNM
+-   PC1~TSL~ (Live tree density + Shrub cover + Litter cover)
+-   Soft coarse woody debris (CWD)
+-   Forb/grass cover
 
 ```{r echo=FALSE}
 
 # Create data frame with all possible variable combinations
-veg <- c('soft_cwd_volume', 'forb_grass_cover', 'pca_score', 'pcnm_1')
+veg <- c('soft_cwd_volume', 'forb_grass_cover', 'pca_score')
 cbind.fill <- function(...){
     nm <- list(...) 
     nm <- lapply(nm, as.matrix)
@@ -239,22 +254,22 @@ cbind.fill <- function(...){
     do.call(cbind, lapply(nm, function (x) 
         rbind(x, matrix(,n-nrow(x),ncol(x))))) 
 }
-var_combos <- data.frame(cbind.fill(combn(veg,1), combn(veg,2), combn(veg,3), combn(veg,4)))
+var_combos <- data.frame(cbind.fill(combn(veg,1), combn(veg,2), combn(veg,3)))
 
 # Calculate AIC for each combination
-model_aic <- data_frame(vars=character(),
+model_aic <- data.frame(vars=character(),
                         K=numeric(),
                         aic=numeric())
 for (i in 1:ncol(var_combos)) {
-  vars <- levels(var_combos[,i])
+  vars <- unique(na.omit(rev(var_combos[,i])))
   vars_dat <- as.matrix(select(dat,vars))
-  K <- length(vars)
+  k <- length(vars)
   aic <- manyglm(spp~vars_dat,
                  composition=FALSE,
                  offset=effort$offset,
                  family='negative_binomial')$AICsum
-  new_combo <- data_frame(vars=c(paste(vars,collapse=" + ")),
-                          K=K,
+  new_combo <- data.frame(vars=c(paste(vars,collapse=" + ")),
+                          k=k,
                           aic=aic)
   model_aic <- rbind(model_aic, new_combo)
 }
@@ -271,18 +286,21 @@ model_selection <- cbind(aic_arrange,
          delta_aic=round(delta_aic,2),
          weight=round(weight,2))
 
-head(model_selection, 6)
+model_selection
+
 ```
 
 <br>
 
 ### Final model
 
-- **Final predictors:** PC1~TSL~ + Soft CWD
-- **Responses:** absolute abundances
-  - Trapping effort accounted for with an offset
-  - Assumes negative binomial distribution
-  
+-   **Final predictors:** PC1~TSL~ + Soft CWD
+
+-   **Responses:** absolute abundances
+
+    -   Trapping effort accounted for with an offset
+    -   Assumes negative binomial distribution
+
 ```{r echo=TRUE}
 
 glm_veg <- manyglm(data=dat, spp ~ pca_score + soft_cwd_volume,
@@ -298,13 +316,15 @@ plot(glm_veg) # check for model fit
 
 ### Significance
 
-- `summary` determines which predictors are the strongest contributors when all other predictors have been fitted to the restricted (less variables) model (true for for test=score)
-  - Used the score test to calculate test statistics
-  - Accounted for correlation between variables by shrinking the correlation matrix
-  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
+-   `summary` determines which predictors are the strongest contributors when all other predictors have been fitted to the restricted (less variables) model (true for for test=score)
+
+    -   Used the score test to calculate test statistics
+    -   Accounted for correlation between variables by shrinking the correlation matrix
+    -   Calculated p-values using PIT-trap resampling with 999 bootstrap samples
 
 ```{r echo=TRUE}
 
+set.seed(2021)
 sum_veg <- summary(glm_veg,
                    test='score', # allows for small means due to rare species
                    cor.type='shrink', # accounts for correlation between variables
@@ -337,11 +357,13 @@ rownames(Q_dat) <- traits$species
 
 ### Model
 
-- **Predictors:** interactions between vegetation variables (PC1~TSL~ + Soft CWD) and small mammal traits (feeding guild + foraging mode + nesting habit)
-- **Responses:** relative small mammal abundances
-  - No option for including an offset to account for trapping effort, so used relative abundance data instead
-  - Using relative instead of absolute abundance improved model fit by decreasing heteroscedasticity of residuals
-  - Assumes negative binomial distribution
+-   **Predictors:** interactions between vegetation variables (PC1~TSL~ + Soft CWD) and small mammal traits (feeding guild + foraging mode + nesting habit)
+
+-   **Responses:** relative small mammal abundances
+
+    -   No option for including an offset to account for trapping effort, so used relative abundance data instead
+    -   Using relative instead of absolute abundance improved model fit by decreasing heteroscedasticity of residuals
+    -   Assumes negative binomial distribution
 
 ```{r echo=TRUE}
 
@@ -358,13 +380,15 @@ plot(glm_trait) # check for model fit
 
 ### Significance
 
-- `anova` tests whether the environment-trait interactions predict community structure 
-  - Used the score test to calculate test statistics
-  - No need to shrink the correlation matrix
-  - Calculated p-values using PIT-trap resampling with 999 bootstrap samples
+-   `anova` tests whether the environment-trait interactions predict community structure
+
+    -   Used the score test to calculate test statistics
+    -   No need to shrink the correlation matrix
+    -   Calculated p-values using PIT-trap resampling with 999 bootstrap samples
 
 ```{r echo=TRUE}
 
+set.seed(2021)
 an_trait <- anova(glm_trait,
                   test='score', # allows for small means due to rare species
                   resamp='pit.trap', # p-value calculated via PIT-trap resampling
@@ -377,13 +401,14 @@ an_trait$table
 
 ### LASSO penalty model selection
 
-- Uses the LASSO penalty to do model selection (removes interaction terms that do not decrease BIC)
-- Cannot use `anova` with this method
-- Shows which environment-trait interactions are most important for determining community structure
+-   Uses the LASSO penalty to do model selection (removes interaction terms that do not decrease BIC)
+-   Cannot use `anova` with this method
+-   Shows which environment-trait interactions are most important for determining community structure
 
 ```{r echo=TRUE}
 
-# Model
+# LASSO penalty
+set.seed(2021)
 glm_fc <- traitglm(L_dat, R_dat[-1], Q_dat[-1],
                    composition=TRUE, # relative abundance
                    method='glm1path', # LASSO penalty
@@ -461,4 +486,3 @@ ggsave('figs/10_fig6.png', plot = last_plot(),
 ```{r eval=FALSE, include=FALSE}
 rmarkdown::render('code/10_mvglm.Rmd', output_file = '../docs/10_mvglm.html')
 ```
-

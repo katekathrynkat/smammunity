@@ -1,7 +1,10 @@
 ---
 title: "Data Cleaning"
-author: "Kate Culhane"
-output: html_document
+subtitle: "From [SMAMMUNITY: SMall mAMMal commUNITY](https://github.com/katekathrynkat/smammunity)"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
 editor_options: 
   chunk_output_type: console
 ---
@@ -11,11 +14,18 @@ knitr::opts_knit$set(root.dir = '..')
 knitr::opts_chunk$set(eval = TRUE, include = FALSE)
 ```
 
-<br>
+**Kate Culhane**, Dept. of Ecology, Evolution, and Marine Biology, UC Santa Barbara  
+kathrynculhane@ucsb.edu
+
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. (2021). Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
+
+**Source code:** [01_data_cleaning.Rmd](https://github.com/katekathrynkat/smammunity/blob/master/code/01_data_cleaning.Rmd)
+
+---
 
 ### QA/QC of the small mammal dataset
 
-Original raw data are in raw_data/field_data/smamms_raw.csv; data were entered and proofed by hand from field data sheets. QA/QC checks and queries are to catch mistakes that were made in the field or during data entry (e.g. misread tags, mispelled codes).
+Original raw data are in raw_data/field_data/smamms_raw.csv; data were entered and proofed by hand from field data sheets. QA/QC checks and queries are to catch mistakes that were made in the field or during data entry (e.g. misread tags, misspelled codes).
 
 **Miscellaneous QA/QC:**
 
@@ -57,9 +67,7 @@ Original raw data are in raw_data/field_data/smamms_raw.csv; data were entered a
 - Do any animals change age?
   - *Determine reason for mistake for animals that have impossible timelines for age (e.g. adult --> juvenile).*
 
-
 Clean data exported to raw_data/field_data/smamms_clean.csv.
-
 
 ```{r packages & data}
 
@@ -786,9 +794,9 @@ write_csv(final, 'output_data/01_smamms_clean.csv', col_names = TRUE)
 
 ```
 
-<br>
+---
 
-**Summary of clean data for analyses**
+### Summary of clean data for analyses
 
 *Dimensions of data frame:*
 ```{r include=TRUE, eval=TRUE, echo=FALSE}

@@ -1,10 +1,13 @@
 ---
 title: "Small Mammal Richness and Evenness"
-author: "Kate Culhane"
+subtitle: "From [SMAMMUNITY: SMall mAMMal commUNITY](https://github.com/katekathrynkat/smammunity)"
 output:
   html_document:
     toc: true
     toc_float: true
+    theme: flatly
+    highlight: tango
+    code_folding: hide
 editor_options: 
   chunk_output_type: console
 ---
@@ -15,7 +18,14 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.width=5, fig.height=3)
 ```
 
-<br>
+**Kate Culhane**, Dept. of Ecology, Evolution, and Marine Biology, UC Santa Barbara\
+[kathrynculhane\@ucsb.edu](mailto:kathrynculhane@ucsb.edu){.email}
+
+**Publication:** Culhane, K., R. Sollmann, A.M. White, G.L. Tarbill, S. Cooper, M.A. Moritz, H.S. Young. (2021). Small mammal functional traits and vegetation characteristics mediate community responses to fire severity. Ecological Applications. Manuscript submitted for initial review.
+
+**Source code:** [06_diversity.Rmd](https://github.com/katekathrynkat/smammunity/blob/master/code/06_diversity.Rmd)
+
+---
 
 ```{r packages and data}
 
